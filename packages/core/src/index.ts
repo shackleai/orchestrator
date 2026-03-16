@@ -28,3 +28,6 @@ export type {
   AdapterModule,
   AdapterResult,
 } from './adapters/index.js'
+
+export { Scheduler } from './scheduler.js'
+export type { RunnerExecutor, RunnerResult } from './scheduler.js'
