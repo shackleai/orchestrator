@@ -7,7 +7,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { stat } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
@@ -485,9 +485,17 @@ export class WorktreeManager {
   private async getDbRecordByPath(
     worktreePath: string,
   ): Promise<AgentWorktree | null> {
+    // Normalize path for case-insensitive Windows filesystems
+    let normalized = resolve(worktreePath)
+    if (process.platform === 'win32') {
+      normalized = normalized.toLowerCase()
+    }
+
     const result = await this.db.query<AgentWorktree>(
-      `SELECT * FROM agent_worktrees WHERE worktree_path = $1`,
-      [worktreePath],
+      process.platform === 'win32'
+        ? `SELECT * FROM agent_worktrees WHERE LOWER(worktree_path) = $1`
+        : `SELECT * FROM agent_worktrees WHERE worktree_path = $1`,
+      [normalized],
     )
     return result.rows[0] ?? null
   }

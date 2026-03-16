@@ -9,6 +9,7 @@
 
 import { spawn } from 'node:child_process'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
+import { getSafeEnv } from './env.js'
 
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
@@ -89,12 +90,13 @@ export class ClaudeAdapter implements AdapterModule {
         ? ctx.adapterConfig.timeout * 1000
         : DEFAULT_TIMEOUT_MS
 
-    const env: Record<string, string> = {
-      ...process.env,
+    const shackleEnv: Record<string, string> = {
       ...ctx.env,
       SHACKLEAI_RUN_ID: ctx.heartbeatRunId,
       SHACKLEAI_AGENT_ID: ctx.agentId,
     }
+
+    const env: Record<string, string> = getSafeEnv(shackleEnv)
 
     if (ctx.task) {
       env.SHACKLEAI_TASK_ID = ctx.task

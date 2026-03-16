@@ -95,10 +95,17 @@ export class HeartbeatExecutor {
 
     const agent = agentResult.rows[0]
     const companyId = agent.company_id
-    const adapterConfig =
-      typeof agent.adapter_config === 'string'
-        ? (JSON.parse(agent.adapter_config) as Record<string, unknown>)
-        : agent.adapter_config
+    let adapterConfig: Record<string, unknown>
+    try {
+      adapterConfig =
+        typeof agent.adapter_config === 'string'
+          ? (JSON.parse(agent.adapter_config) as Record<string, unknown>)
+          : agent.adapter_config
+    } catch {
+      const errMsg = `Invalid adapter_config JSON for agent ${agentId}`
+      await this.markRunFailed(runId, errMsg)
+      return { exitCode: 1, stderr: errMsg }
+    }
 
     // ── Step 1: Create heartbeat_run (queued) ───────────────────────
     await this.db.query(
@@ -408,7 +415,7 @@ export class HeartbeatExecutor {
       return result.rows
     }
 
-    // No previous heartbeat � return empty (no baseline to compare against)
+    // No previous heartbeat � return empty (no baseline to compare against)
     return []
   }
 

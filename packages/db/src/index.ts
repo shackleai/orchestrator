@@ -5,7 +5,7 @@
  * - PGliteProvider: Embedded PostgreSQL for local development (via @electric-sql/pglite)
  * - PgProvider: Standard PostgreSQL for production (via pg)
  *
- * Also includes a migration runner that applies 12 schema migrations.
+ * Also includes a migration runner that applies 13 schema migrations.
  */
 
 export type { DatabaseProvider, QueryResult } from './provider.js'

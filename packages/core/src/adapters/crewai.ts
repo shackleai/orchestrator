@@ -13,6 +13,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
+import { getSafeEnv } from './env.js'
 
 /** Default timeout in milliseconds (600 seconds). */
 const DEFAULT_TIMEOUT_MS = 600_000
@@ -38,23 +39,54 @@ interface CrewAIUsage {
 }
 
 /**
+ * Extract JSON blocks delimited by RESULT_MARKER from stdout.
+ * Uses brace-depth counting to handle nested JSON (not a simple regex).
+ */
+function extractResultBlocks(stdout: string): string[] {
+  const blocks: string[] = []
+  let searchFrom = 0
+
+  while (true) {
+    const startIdx = stdout.indexOf(RESULT_MARKER, searchFrom)
+    if (startIdx === -1) break
+
+    const jsonStart = startIdx + RESULT_MARKER.length
+    if (jsonStart >= stdout.length || stdout[jsonStart] !== '{') {
+      searchFrom = jsonStart
+      continue
+    }
+
+    // Walk forward with brace-depth counting
+    let depth = 0
+    let jsonEnd = -1
+    for (let i = jsonStart; i < stdout.length; i++) {
+      if (stdout[i] === '{') depth++
+      else if (stdout[i] === '}') depth--
+      if (depth === 0) {
+        jsonEnd = i + 1
+        break
+      }
+    }
+
+    if (jsonEnd === -1) break
+
+    blocks.push(stdout.slice(jsonStart, jsonEnd))
+    searchFrom = jsonEnd
+  }
+
+  return blocks
+}
+
+/**
  * Parse the last `__shackleai_result__` JSON block from stdout.
  * Expected format in stdout:
  *   __shackleai_result__{"inputTokens":…,"outputTokens":…,…}__shackleai_result__
  */
 function parseUsageFromStdout(stdout: string): CrewAIUsage | undefined {
-  const regex = new RegExp(
-    `${RESULT_MARKER}(\\{[^}]+\\})${RESULT_MARKER}`,
-    'g',
-  )
+  const blocks = extractResultBlocks(stdout)
+  if (blocks.length === 0) return undefined
 
-  let last: string | undefined
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(stdout)) !== null) {
-    last = match[1]
-  }
-
-  if (!last) return undefined
+  const last = blocks[blocks.length - 1]
 
   try {
     const parsed: unknown = JSON.parse(last)
@@ -138,13 +170,14 @@ export class CrewAIAdapter implements AdapterModule {
       args.push('--config', crewConfig)
     }
 
-    // Build env
-    const env: Record<string, string> = {
-      ...process.env,
+    // Build env — whitelist safe vars, never leak host secrets
+    const shackleEnv: Record<string, string> = {
       ...ctx.env,
       SHACKLEAI_RUN_ID: ctx.heartbeatRunId,
       SHACKLEAI_AGENT_ID: ctx.agentId,
     }
+
+    const env: Record<string, string> = getSafeEnv(shackleEnv)
 
     if (ctx.task) {
       env.SHACKLEAI_TASK_ID = ctx.task
@@ -204,20 +237,11 @@ export class CrewAIAdapter implements AdapterModule {
 
         // Parse session state from result block if present
         let sessionState: string | null = null
-        const sessionRegex = new RegExp(
-          `${RESULT_MARKER}(\\{[^}]+\\})${RESULT_MARKER}`,
-          'g',
-        )
-        let lastSessionMatch: string | undefined
-        let sessionMatch: RegExpExecArray | null
-        while (
-          (sessionMatch = sessionRegex.exec(rawStdout)) !== null
-        ) {
-          lastSessionMatch = sessionMatch[1]
-        }
-        if (lastSessionMatch) {
+        const sessionBlocks = extractResultBlocks(rawStdout)
+        if (sessionBlocks.length > 0) {
+          const lastBlock = sessionBlocks[sessionBlocks.length - 1]
           try {
-            const parsed = JSON.parse(lastSessionMatch) as Record<
+            const parsed = JSON.parse(lastBlock) as Record<
               string,
               unknown
             >
