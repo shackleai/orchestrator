@@ -2,12 +2,11 @@
  * `shackleai start` — Start Hono server with API routes
  */
 
-import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { PGliteProvider, PgProvider, runMigrations } from '@shackleai/db'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { Company, Agent } from '@shackleai/shared'
 import { readConfig } from '../config.js'
+import { createApp } from '../server/index.js'
 
 const VERSION = '0.1.0'
 
@@ -37,22 +36,7 @@ export async function startCommand(options: { port: number }): Promise<void> {
 
   await runMigrations(db)
 
-  // Create Hono app
-  const app = new Hono()
-
-  app.get('/api/health', (c) => {
-    return c.json({ status: 'ok', version: VERSION })
-  })
-
-  app.get('/api/companies', async (c) => {
-    const result = await db.query<Company>('SELECT * FROM companies')
-    return c.json(result.rows)
-  })
-
-  app.get('/api/agents', async (c) => {
-    const result = await db.query<Agent>('SELECT * FROM agents')
-    return c.json(result.rows)
-  })
+  const app = createApp(db)
 
   const port = options.port
 
