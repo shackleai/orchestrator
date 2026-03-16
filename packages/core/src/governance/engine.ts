@@ -44,7 +44,6 @@ export class GovernanceEngine {
     companyId: string,
     agentId: string,
     toolName: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _params?: Record<string, unknown>,
   ): Promise<PolicyCheckResult> {
     // Fetch all policies for this company that apply to this agent
