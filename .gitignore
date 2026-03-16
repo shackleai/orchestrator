@@ -15,6 +15,7 @@ dist/
 
 # Internal
 PLAN.md
+.claude/worktrees/
 
 # IDE
 .vscode/
