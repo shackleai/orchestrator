@@ -5,10 +5,9 @@
 import { serve } from '@hono/node-server'
 import { PGliteProvider, PgProvider, runMigrations } from '@shackleai/db'
 import type { DatabaseProvider } from '@shackleai/db'
-import { readConfig } from '../config.js'
+import { readConfig, writeConfig } from '../config.js'
 import { createApp } from '../server/index.js'
-
-const VERSION = '0.1.0'
+import { VERSION } from '../index.js'
 
 export async function startCommand(options: { port: number }): Promise<void> {
   const config = await readConfig()
@@ -40,14 +39,17 @@ export async function startCommand(options: { port: number }): Promise<void> {
 
   const port = options.port
 
+  // Persist port to config so other CLI commands can find it
+  await writeConfig({ ...config, port })
+
   console.log(`
   ShackleAI Orchestrator v${VERSION}
   Company: ${config.companyName}
   Mode:    ${config.mode}
 
-  Dashboard: http://localhost:${port}
-  Health:    http://localhost:${port}/api/health
+  Dashboard: http://127.0.0.1:${port}
+  Health:    http://127.0.0.1:${port}/api/health
   `)
 
-  serve({ fetch: app.fetch, port })
+  serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
 }

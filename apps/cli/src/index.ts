@@ -26,8 +26,9 @@ program
 program
   .command('init')
   .description('Initialize a new ShackleAI orchestrator')
-  .action(async () => {
-    await initCommand()
+  .option('--force', 'Reinitialize even if already configured')
+  .action(async (opts: { force?: boolean }) => {
+    await initCommand({ force: opts.force })
   })
 
 program
