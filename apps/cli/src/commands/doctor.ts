@@ -5,9 +5,8 @@
 import type { Command } from 'commander'
 import { WorktreeManager } from '@shackleai/core'
 import { GIT_MIN_VERSION } from '@shackleai/shared'
-import { readConfig, getConfigPath } from '../config.js'
-
-const VERSION = '0.1.0'
+import { readConfig, getConfigPath, DEFAULT_PORT } from '../config.js'
+import { VERSION } from '../index.js'
 
 async function runDoctor(): Promise<void> {
   console.log(`ShackleAI Orchestrator v${VERSION} — Doctor\n`)
@@ -30,8 +29,10 @@ async function runDoctor(): Promise<void> {
 
   // 2. Check DB connection via API health endpoint
   if (config) {
+    const port = config.port ?? DEFAULT_PORT
+    const baseUrl = `http://127.0.0.1:${port}`
     try {
-      const healthRes = await fetch('http://localhost:4800/api/health')
+      const healthRes = await fetch(`${baseUrl}/api/health`)
       if (healthRes.ok) {
         const health = (await healthRes.json()) as {
           status: string
@@ -42,7 +43,7 @@ async function runDoctor(): Promise<void> {
         // 3. Fetch dashboard metrics for counts
         try {
           const dashRes = await fetch(
-            `http://localhost:4800/api/companies/${config.companyId}/dashboard`,
+            `${baseUrl}/api/companies/${config.companyId}/dashboard`,
           )
           if (dashRes.ok) {
             const dash = (await dashRes.json()) as {
@@ -68,7 +69,7 @@ async function runDoctor(): Promise<void> {
       }
     } catch {
       console.log(
-        '[FAIL] Server not reachable at http://localhost:4800. Is it running? (`shackleai start`)',
+        `[FAIL] Server not reachable at ${baseUrl}. Is it running? (\`shackleai start\`)`,
       )
       allOk = false
     }

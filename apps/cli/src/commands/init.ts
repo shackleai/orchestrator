@@ -6,12 +6,21 @@ import * as p from '@clack/prompts'
 import { PGliteProvider, PgProvider, runMigrations } from '@shackleai/db'
 import { AdapterType } from '@shackleai/shared'
 import type { DatabaseProvider } from '@shackleai/db'
-import { writeConfig } from '../config.js'
+import { readConfig, writeConfig } from '../config.js'
+import { VERSION } from '../index.js'
 
-const VERSION = '0.1.0'
-
-export async function initCommand(): Promise<void> {
+export async function initCommand(options: { force?: boolean } = {}): Promise<void> {
   p.intro(`ShackleAI Orchestrator v${VERSION}`)
+
+  // Check if already initialized
+  const existingConfig = await readConfig()
+  if (existingConfig && !options.force) {
+    p.log.warning(
+      'ShackleAI is already initialized. Run with --force to reinitialize.',
+    )
+    p.outro(`Company: ${existingConfig.companyName} (${existingConfig.companyId})`)
+    return
+  }
 
   const mode = await p.select({
     message: 'Deployment mode',
@@ -94,13 +103,30 @@ export async function initCommand(): Promise<void> {
     .replace(/[^A-Z0-9]/g, '')
     .slice(0, 5)
 
-  const companyResult = await db.query<{ id: string }>(
-    `INSERT INTO companies (name, description, issue_prefix)
-     VALUES ($1, $2, $3)
-     RETURNING id`,
-    [companyName.trim(), mission?.trim() || null, issuePrefix || 'MAIN'],
-  )
-  const companyId = companyResult.rows[0].id
+  let companyId: string
+  try {
+    const companyResult = await db.query<{ id: string }>(
+      `INSERT INTO companies (name, description, issue_prefix)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [companyName.trim(), mission?.trim() || null, issuePrefix || 'MAIN'],
+    )
+    companyId = companyResult.rows[0].id
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes('unique') || message.includes('duplicate')) {
+      spin.stop('Company already exists')
+      p.log.warning(
+        `A company named "${companyName.trim()}" already exists. Run with --force to reinitialize or choose a different name.`,
+      )
+      await db.close()
+      process.exit(1)
+    }
+    spin.stop('Failed to create company')
+    console.error(`Database error: ${message}`)
+    await db.close()
+    process.exit(1)
+  }
   spin.stop('Company created')
 
   // Optionally create first agent

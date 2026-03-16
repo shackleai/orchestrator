@@ -2,9 +2,7 @@
  * Shared API client for CLI commands that call the local orchestrator server.
  */
 
-import { readConfig } from './config.js'
-
-const DEFAULT_PORT = 4800
+import { readConfig, DEFAULT_PORT } from './config.js'
 
 export async function apiClient(
   path: string,
@@ -16,7 +14,8 @@ export async function apiClient(
     process.exit(1)
   }
 
-  const baseUrl = `http://localhost:${DEFAULT_PORT}`
+  const port = config.port ?? DEFAULT_PORT
+  const baseUrl = `http://127.0.0.1:${port}`
   const url = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`
 
   const res = await fetch(url, {

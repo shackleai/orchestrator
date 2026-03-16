@@ -12,7 +12,10 @@ export interface ShackleAIConfig {
   companyName: string
   databaseUrl?: string
   dataDir?: string
+  port?: number
 }
+
+export const DEFAULT_PORT = 4800
 
 export function getConfigPath(): string {
   return join(homedir(), '.shackleai', 'config.json')

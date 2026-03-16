@@ -16,7 +16,7 @@ import { goalsRouter } from './routes/goals.js'
 import { projectsRouter } from './routes/projects.js'
 import { worktreesRouter } from './routes/worktrees.js'
 
-const VERSION = '0.1.0'
+import { VERSION } from '../index.js'
 
 export function createApp(db: DatabaseProvider): Hono {
   const app = new Hono()
