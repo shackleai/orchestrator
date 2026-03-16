@@ -65,10 +65,13 @@ export function activityRouter(db: DatabaseProvider): Hono<{ Variables: Variable
       }
     }
 
+    const { offset: offsetStr } = c.req.query()
+    const offset = offsetStr ? Math.max(parseInt(offsetStr, 10) || 0, 0) : 0
+
     const where = conditions.join(' AND ')
     const result = await db.query<ActivityLogEntry>(
-      `SELECT * FROM activity_log WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex}`,
-      [...params, limit],
+      `SELECT * FROM activity_log WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset],
     )
 
     return c.json({ data: result.rows })

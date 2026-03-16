@@ -8,6 +8,7 @@ import type { CostEvent } from '@shackleai/shared'
 import { CreateCostEventInput } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -47,10 +48,12 @@ export function costsRouter(db: DatabaseProvider): Hono<{ Variables: Variables }
       params.push(to)
     }
 
+    const { limit, offset } = parsePagination(c)
+
     const where = conditions.join(' AND ')
     const result = await db.query<CostEvent>(
-      `SELECT * FROM cost_events WHERE ${where} ORDER BY occurred_at DESC`,
-      params,
+      `SELECT * FROM cost_events WHERE ${where} ORDER BY occurred_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset],
     )
 
     return c.json({ data: result.rows })

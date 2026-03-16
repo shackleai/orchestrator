@@ -273,13 +273,18 @@ export class WorktreeManager {
   async list(
     companyId: string,
     agentId?: string,
+    pagination?: { limit: number; offset: number },
   ): Promise<AgentWorktree[]> {
+    const limit = pagination?.limit ?? 100
+    const offset = pagination?.offset ?? 0
+
     if (agentId) {
       const result = await this.db.query<AgentWorktree>(
         `SELECT * FROM agent_worktrees
          WHERE company_id = $1 AND agent_id = $2
-         ORDER BY created_at DESC`,
-        [companyId, agentId],
+         ORDER BY created_at DESC
+         LIMIT $3 OFFSET $4`,
+        [companyId, agentId, limit, offset],
       )
       return result.rows
     }
@@ -287,8 +292,9 @@ export class WorktreeManager {
     const result = await this.db.query<AgentWorktree>(
       `SELECT * FROM agent_worktrees
        WHERE company_id = $1
-       ORDER BY created_at DESC`,
-      [companyId],
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [companyId, limit, offset],
     )
     return result.rows
   }

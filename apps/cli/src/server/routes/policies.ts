@@ -8,6 +8,7 @@ import type { Policy } from '@shackleai/shared'
 import { CreatePolicyInput, UpdatePolicyInput } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -23,9 +24,10 @@ export function policiesRouter(db: DatabaseProvider): Hono<{ Variables: Variable
   // GET /api/companies/:id/policies — list policies for company
   app.get('/:id/policies', companyScope, async (c) => {
     const companyId = c.req.param('id')
+    const { limit, offset } = parsePagination(c)
     const result = await db.query<Policy>(
-      `SELECT * FROM policies WHERE company_id = $1 ORDER BY priority DESC, created_at DESC`,
-      [companyId],
+      `SELECT * FROM policies WHERE company_id = $1 ORDER BY priority DESC, created_at DESC LIMIT $2 OFFSET $3`,
+      [companyId, limit, offset],
     )
     return c.json({ data: result.rows })
   })

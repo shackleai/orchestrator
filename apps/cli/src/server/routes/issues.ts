@@ -9,6 +9,7 @@ import { CreateIssueInput, UpdateIssueInput, CreateIssueCommentInput } from '@sh
 import { IssueStatus } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -45,10 +46,12 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
       params.push(assignee)
     }
 
+    const { limit, offset } = parsePagination(c)
+
     const where = conditions.join(' AND ')
     const result = await db.query<Issue>(
-      `SELECT * FROM issues WHERE ${where} ORDER BY created_at DESC`,
-      params,
+      `SELECT * FROM issues WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset],
     )
 
     return c.json({ data: result.rows })
@@ -296,9 +299,10 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
       return c.json({ error: 'Issue not found' }, 404)
     }
 
+    const { limit, offset } = parsePagination(c)
     const result = await db.query<IssueComment>(
-      `SELECT * FROM issue_comments WHERE issue_id = $1 ORDER BY created_at ASC`,
-      [issueId],
+      `SELECT * FROM issue_comments WHERE issue_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`,
+      [issueId, limit, offset],
     )
 
     return c.json({ data: result.rows })
