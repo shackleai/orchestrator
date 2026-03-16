@@ -7,6 +7,11 @@
 import { Command } from 'commander'
 import { initCommand } from './commands/init.js'
 import { startCommand } from './commands/start.js'
+import { registerAgentCommand } from './commands/agent.js'
+import { registerTaskCommand } from './commands/task.js'
+import { registerRunCommand } from './commands/run.js'
+import { registerDoctorCommand } from './commands/doctor.js'
+import { registerUpgradeCommand } from './commands/upgrade.js'
 
 export const VERSION = '0.1.0'
 
@@ -31,5 +36,11 @@ program
   .action(async (opts: { port: string }) => {
     await startCommand({ port: parseInt(opts.port, 10) })
   })
+
+registerAgentCommand(program)
+registerTaskCommand(program)
+registerRunCommand(program)
+registerDoctorCommand(program)
+registerUpgradeCommand(program)
 
 program.parse()
