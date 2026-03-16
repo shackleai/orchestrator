@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
 import { PGliteProvider, runMigrations } from '@shackleai/db'
 import type { DatabaseProvider } from '@shackleai/db'
-import { TriggerType, HeartbeatRunStatus } from '@shackleai/shared'
+import { TriggerType } from '@shackleai/shared'
 import { Scheduler } from '../src/scheduler.js'
 import type { RunnerExecutor } from '../src/scheduler.js'
 
@@ -127,7 +127,7 @@ describe('Scheduler', () => {
   })
 
   describe('triggerNow — on-demand', () => {
-    it('executes heartbeat and creates a run record', async () => {
+    it('delegates execution to the executor and returns its result', async () => {
       const executor: RunnerExecutor = vi.fn(async () => ({
         exitCode: 0,
         stdout: 'done',
@@ -136,82 +136,53 @@ describe('Scheduler', () => {
       }))
 
       scheduler = new Scheduler(db, executor)
-      const runId = await scheduler.triggerNow(
+      const result = await scheduler.triggerNow(
         AGENT_ONDEMAND_ID,
         TriggerType.Manual,
       )
 
-      expect(runId).toBeTruthy()
+      expect(result).not.toBeNull()
+      expect(result!.exitCode).toBe(0)
+      expect(result!.stdout).toBe('done')
       expect(executor).toHaveBeenCalledWith(
         AGENT_ONDEMAND_ID,
         TriggerType.Manual,
       )
-
-      // Verify heartbeat_runs record
-      const runs = await db.query<{
-        id: string
-        status: string
-        trigger_type: string
-        exit_code: number
-        stdout_excerpt: string
-        session_id_after: string
-      }>('SELECT * FROM heartbeat_runs WHERE id = $1', [runId])
-
-      expect(runs.rows).toHaveLength(1)
-      expect(runs.rows[0].status).toBe(HeartbeatRunStatus.Success)
-      expect(runs.rows[0].trigger_type).toBe(TriggerType.Manual)
-      expect(runs.rows[0].exit_code).toBe(0)
-      expect(runs.rows[0].stdout_excerpt).toBe('done')
-      expect(runs.rows[0].session_id_after).toBe('sess-123')
     })
 
-    it('marks failed runs with exit code and error', async () => {
+    it('returns result with non-zero exit code from executor', async () => {
       const failExecutor: RunnerExecutor = vi.fn(async () => ({
         exitCode: 1,
         stderr: 'crash',
       }))
 
       scheduler = new Scheduler(db, failExecutor)
-      const runId = await scheduler.triggerNow(
+      const result = await scheduler.triggerNow(
         AGENT_ONDEMAND_ID,
         TriggerType.Api,
       )
 
-      expect(runId).toBeTruthy()
-
-      const runs = await db.query<{ status: string; error: string }>(
-        'SELECT status, error FROM heartbeat_runs WHERE id = $1',
-        [runId],
-      )
-      expect(runs.rows[0].status).toBe(HeartbeatRunStatus.Failed)
-      expect(runs.rows[0].error).toBe('crash')
+      expect(result).not.toBeNull()
+      expect(result!.exitCode).toBe(1)
+      expect(result!.stderr).toBe('crash')
     })
 
-    it('returns null for unknown agent', async () => {
-      scheduler = new Scheduler(db, successExecutor)
-      const runId = await scheduler.triggerNow(
+    it('returns result for unknown agent (executor handles error)', async () => {
+      // The executor is responsible for returning an error result for unknown agents.
+      // The scheduler just forwards whatever the executor returns.
+      const executor: RunnerExecutor = vi.fn(async () => ({
+        exitCode: 1,
+        stderr: 'Agent not found',
+      }))
+
+      scheduler = new Scheduler(db, executor)
+      const result = await scheduler.triggerNow(
         '00000000-0000-4000-a000-999999999999',
         TriggerType.Manual,
       )
-      expect(runId).toBeNull()
-    })
 
-    it('updates agent last_heartbeat_at', async () => {
-      scheduler = new Scheduler(db, successExecutor)
-
-      // Clear existing heartbeat_at
-      await db.query(
-        'UPDATE agents SET last_heartbeat_at = NULL WHERE id = $1',
-        [AGENT_ONDEMAND_ID],
-      )
-
-      await scheduler.triggerNow(AGENT_ONDEMAND_ID, TriggerType.Manual)
-
-      const agent = await db.query<{ last_heartbeat_at: Date | null }>(
-        'SELECT last_heartbeat_at FROM agents WHERE id = $1',
-        [AGENT_ONDEMAND_ID],
-      )
-      expect(agent.rows[0].last_heartbeat_at).not.toBeNull()
+      expect(result).not.toBeNull()
+      expect(result!.exitCode).toBe(1)
     })
   })
 
@@ -252,7 +223,8 @@ describe('Scheduler', () => {
       // Unblock first
       resolveFirst!()
       const firstResult = await firstPromise
-      expect(firstResult).toBeTruthy()
+      expect(firstResult).not.toBeNull()
+      expect(firstResult!.exitCode).toBe(0)
 
       // Executor was only called once
       expect(callCount).toBe(1)
@@ -266,13 +238,13 @@ describe('Scheduler', () => {
       })
 
       scheduler = new Scheduler(db, throwingExecutor)
-      const runId = await scheduler.triggerNow(
+      const result = await scheduler.triggerNow(
         AGENT_ONDEMAND_ID,
         TriggerType.Manual,
       )
 
       // Returns null on error
-      expect(runId).toBeNull()
+      expect(result).toBeNull()
 
       // Agent should no longer be marked as running
       expect(scheduler.isRunning(AGENT_ONDEMAND_ID)).toBe(false)

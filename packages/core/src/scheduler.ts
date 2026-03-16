@@ -11,9 +11,7 @@
 
 import type { DatabaseProvider } from '@shackleai/db'
 import type { TriggerType } from '@shackleai/shared'
-import { HeartbeatRunStatus } from '@shackleai/shared'
 import cron from 'node-cron'
-import { randomUUID } from 'node:crypto'
 
 /** Result returned by the runner executor callback. */
 export interface RunnerResult {
@@ -133,9 +131,9 @@ export class Scheduler {
 
   /**
    * Trigger an immediate on-demand heartbeat for an agent.
-   * Returns the heartbeat run ID.
+   * Returns the RunnerResult from the executor, or null if coalesced/skipped.
    */
-  async triggerNow(agentId: string, reason: TriggerType): Promise<string | null> {
+  async triggerNow(agentId: string, reason: TriggerType): Promise<RunnerResult | null> {
     return this.executeHeartbeat(agentId, reason)
   }
 
@@ -156,101 +154,26 @@ export class Scheduler {
 
   /**
    * Execute a heartbeat for the given agent.
-   * Creates a heartbeat_run record, calls the executor, updates status.
+   * Delegates all run-record management and agent status to the executor.
    * Coalescing: if agent already running, skip and return null.
    */
   private async executeHeartbeat(
     agentId: string,
     trigger: TriggerType,
-  ): Promise<string | null> {
+  ): Promise<RunnerResult | null> {
     // Coalescing — skip if already running
     if (this.running.has(agentId)) {
       return null
     }
 
     this.running.add(agentId)
-    const runId = randomUUID()
 
     try {
-      // Look up agent's company_id
-      const agentResult = await this.db.query<{ company_id: string }>(
-        'SELECT company_id FROM agents WHERE id = $1',
-        [agentId],
-      )
-
-      if (agentResult.rows.length === 0) {
-        return null
-      }
-
-      const companyId = agentResult.rows[0].company_id
-
-      // Insert queued heartbeat_run
-      await this.db.query(
-        `INSERT INTO heartbeat_runs (id, company_id, agent_id, trigger_type, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())`,
-        [runId, companyId, agentId, trigger, HeartbeatRunStatus.Queued],
-      )
-
-      // Mark as running
-      await this.db.query(
-        `UPDATE heartbeat_runs SET status = $1, started_at = NOW() WHERE id = $2`,
-        [HeartbeatRunStatus.Running, runId],
-      )
-
-      // Execute the runner
+      // Delegate entirely to the executor — it owns heartbeat_run
+      // creation, agent status transitions, and result recording.
       const result = await this.executor(agentId, trigger)
-
-      // Determine final status
-      const finalStatus =
-        result.exitCode === 0
-          ? HeartbeatRunStatus.Success
-          : HeartbeatRunStatus.Failed
-
-      // Update heartbeat_run with result
-      await this.db.query(
-        `UPDATE heartbeat_runs
-         SET status = $1,
-             finished_at = NOW(),
-             exit_code = $2,
-             stdout_excerpt = $3,
-             error = $4,
-             usage_json = $5,
-             session_id_after = $6
-         WHERE id = $7`,
-        [
-          finalStatus,
-          result.exitCode,
-          result.stdout?.slice(0, 4000) ?? null,
-          result.stderr ?? null,
-          result.usage ? JSON.stringify(result.usage) : null,
-          result.sessionIdAfter ?? null,
-          runId,
-        ],
-      )
-
-      // Update agent's last_heartbeat_at
-      await this.db.query(
-        'UPDATE agents SET last_heartbeat_at = NOW() WHERE id = $1',
-        [agentId],
-      )
-
-      return runId
-    } catch (err) {
-      // Mark the run as failed if possible
-      try {
-        await this.db.query(
-          `UPDATE heartbeat_runs
-           SET status = $1, finished_at = NOW(), error = $2
-           WHERE id = $3`,
-          [
-            HeartbeatRunStatus.Failed,
-            err instanceof Error ? err.message : String(err),
-            runId,
-          ],
-        )
-      } catch {
-        // Best-effort — don't let logging failure mask the real error
-      }
+      return result
+    } catch {
       return null
     } finally {
       this.running.delete(agentId)

@@ -6,14 +6,15 @@ import { Hono } from 'hono'
 import { createHash, randomBytes } from 'node:crypto'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Agent, AgentApiKey } from '@shackleai/shared'
-import { CreateAgentInput, UpdateAgentInput } from '@shackleai/shared'
+import { CreateAgentInput, UpdateAgentInput, TriggerType } from '@shackleai/shared'
 import { AgentStatus, AgentApiKeyStatus } from '@shackleai/shared'
+import type { Scheduler } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 
 type Variables = CompanyScopeVariables
 
-export function agentsRouter(db: DatabaseProvider): Hono<{ Variables: Variables }> {
+export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>()
 
   // Inject db into context for all routes
@@ -220,21 +221,64 @@ export function agentsRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
 
   // POST /api/companies/:id/agents/:agentId/wakeup — on-demand heartbeat
   app.post('/:id/agents/:agentId/wakeup', companyScope, async (c) => {
-    const companyId = c.req.param('id')
-    const agentId = c.req.param('agentId')
+    const companyId = c.req.param('id') as string
+    const agentId = c.req.param('agentId') as string
 
-    const result = await db.query<Agent>(
-      `UPDATE agents SET last_heartbeat_at = NOW(), updated_at = NOW()
-       WHERE id = $1 AND company_id = $2
-       RETURNING *`,
+    // Verify agent exists and belongs to company
+    const agentResult = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
     )
 
-    if (result.rows.length === 0) {
+    if (agentResult.rows.length === 0) {
       return c.json({ error: 'Agent not found' }, 404)
     }
 
-    return c.json({ data: { agent: result.rows[0], triggered: true } })
+    // If no scheduler is available, fall back to just updating the timestamp
+    if (!scheduler) {
+      const updated = await db.query<Agent>(
+        `UPDATE agents SET last_heartbeat_at = NOW(), updated_at = NOW()
+         WHERE id = $1 AND company_id = $2
+         RETURNING *`,
+        [agentId, companyId],
+      )
+      return c.json({ data: { agent: updated.rows[0], triggered: false } })
+    }
+
+    // Trigger real execution via the scheduler (which handles coalescing)
+    const runResult = await scheduler.triggerNow(agentId, TriggerType.Manual)
+
+    if (!runResult) {
+      // Coalesced (agent already running) or failed to start
+      const agent = agentResult.rows[0]
+      return c.json({
+        data: {
+          agent,
+          triggered: false,
+          reason: scheduler.isRunning(agentId)
+            ? 'Agent heartbeat already in progress'
+            : 'Execution could not be started',
+        },
+      })
+    }
+
+    // Re-fetch agent to get updated state after execution
+    const updatedAgent = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+
+    return c.json({
+      data: {
+        agent: updatedAgent.rows[0] ?? agentResult.rows[0],
+        triggered: true,
+        result: {
+          exitCode: runResult.exitCode,
+          stdout: runResult.stdout,
+          stderr: runResult.stderr,
+        },
+      },
+    })
   })
 
   // POST /api/companies/:id/agents/:agentId/api-keys — generate API key
