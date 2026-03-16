@@ -163,6 +163,12 @@ describe('AdapterContext — agent communication fields', () => {
   })
 
   it('injects unreadComments on agent tasks since last heartbeat', async () => {
+    // Reset last_heartbeat_at to a known value (previous tests may have updated it via execute())
+    await db.query(
+      `UPDATE agents SET last_heartbeat_at = '2025-01-01T00:00:00.000Z' WHERE id = $1`,
+      [AGENT_ID],
+    )
+
     // Ensure agent has a task assigned
     const issueResult = await db.query<{ id: string }>(
       `SELECT id FROM issues WHERE identifier = 'CTX-11'`,
