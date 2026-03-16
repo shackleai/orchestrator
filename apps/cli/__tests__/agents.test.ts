@@ -228,13 +228,14 @@ describe('agents routes — lifecycle', () => {
     expect(body.data.status).toBe(AgentStatus.Terminated)
   })
 
-  it('POST /:agentId/wakeup updates last_heartbeat_at', async () => {
+  it('POST /:agentId/wakeup updates last_heartbeat_at (no scheduler fallback)', async () => {
     const res = await app.request(`/api/companies/${companyId}/agents/${agentId}/wakeup`, {
       method: 'POST',
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: { triggered: boolean; agent: { last_heartbeat_at: string } } }
-    expect(body.data.triggered).toBe(true)
+    // Without a scheduler, triggered is false (fallback mode)
+    expect(body.data.triggered).toBe(false)
     expect(body.data.agent.last_heartbeat_at).toBeTruthy()
   })
 
