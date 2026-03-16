@@ -10,6 +10,7 @@ import { CreateAgentInput, UpdateAgentInput } from '@shackleai/shared'
 import { AgentStatus, AgentApiKeyStatus } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -25,9 +26,10 @@ export function agentsRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
   // GET /api/companies/:id/agents — list agents with status, budget, last_heartbeat_at
   app.get('/:id/agents', companyScope, async (c) => {
     const companyId = c.req.param('id')
+    const { limit, offset } = parsePagination(c)
     const result = await db.query<Agent>(
-      `SELECT * FROM agents WHERE company_id = $1 ORDER BY created_at DESC`,
-      [companyId],
+      `SELECT * FROM agents WHERE company_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [companyId, limit, offset],
     )
     return c.json({ data: result.rows })
   })

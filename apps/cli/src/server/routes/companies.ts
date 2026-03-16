@@ -8,6 +8,7 @@ import type { Company } from '@shackleai/shared'
 import { CreateCompanyInput, UpdateCompanyInput } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -22,7 +23,11 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
 
   // GET /api/companies — list all companies
   app.get('/', async (c) => {
-    const result = await db.query<Company>('SELECT * FROM companies ORDER BY created_at DESC')
+    const { limit, offset } = parsePagination(c)
+    const result = await db.query<Company>(
+      'SELECT * FROM companies ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [limit, offset],
+    )
     return c.json({ data: result.rows })
   })
 

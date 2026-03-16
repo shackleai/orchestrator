@@ -7,6 +7,7 @@ import type { DatabaseProvider } from '@shackleai/db'
 import type { HeartbeatRun } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -22,9 +23,10 @@ export function heartbeatsRouter(db: DatabaseProvider): Hono<{ Variables: Variab
   // GET /api/companies/:id/heartbeats — list heartbeat runs ordered by created_at DESC
   app.get('/:id/heartbeats', companyScope, async (c) => {
     const companyId = c.req.param('id')
+    const { limit, offset } = parsePagination(c)
     const result = await db.query<HeartbeatRun>(
-      `SELECT * FROM heartbeat_runs WHERE company_id = $1 ORDER BY created_at DESC`,
-      [companyId],
+      `SELECT * FROM heartbeat_runs WHERE company_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [companyId, limit, offset],
     )
     return c.json({ data: result.rows })
   })

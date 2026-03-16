@@ -13,6 +13,7 @@ import {
 import { WorktreeManager } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
@@ -45,7 +46,8 @@ export function worktreesRouter(
         return c.json({ error: 'Agent not found' }, 404)
       }
 
-      const worktrees = await manager.list(companyId, agentId)
+      const { limit, offset } = parsePagination(c)
+      const worktrees = await manager.list(companyId, agentId, { limit, offset })
       return c.json({ data: worktrees })
     },
   )
