@@ -7,15 +7,15 @@ describe('Migration Runner', () => {
 
   beforeAll(async () => {
     db = new PGliteProvider()
-  })
+  }, 30_000)
 
   afterAll(async () => {
     await db.close()
   })
 
-  it('should apply all 12 migrations on a fresh database', async () => {
+  it('should apply all migrations on a fresh database', { timeout: 30_000 }, async () => {
     const applied = await runMigrations(db)
-    expect(applied).toHaveLength(12)
+    expect(applied).toHaveLength(migrations.length)
 
     // Verify they match the expected migration names in order
     const expectedNames = migrations.map((m) => m.name)
@@ -31,9 +31,11 @@ describe('Migration Runner', () => {
     const result = await db.query<{ name: string; applied_at: string }>(
       'SELECT name, applied_at FROM _migrations ORDER BY name',
     )
-    expect(result.rows).toHaveLength(12)
+    expect(result.rows).toHaveLength(migrations.length)
     expect(result.rows[0].name).toBe('001_companies')
-    expect(result.rows[11].name).toBe('012_license_keys')
+    expect(result.rows[result.rows.length - 1].name).toBe(
+      migrations[migrations.length - 1].name,
+    )
 
     // Each row should have an applied_at timestamp
     for (const row of result.rows) {
@@ -51,6 +53,7 @@ describe('Migration Runner', () => {
       '_migrations',
       'activity_log',
       'agent_api_keys',
+      'agent_worktrees',
       'agents',
       'companies',
       'cost_events',

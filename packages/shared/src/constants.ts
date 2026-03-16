@@ -118,3 +118,20 @@ export const LicenseTier = {
   Enterprise: 'enterprise',
 } as const
 export type LicenseTier = (typeof LicenseTier)[keyof typeof LicenseTier]
+
+export const WorktreeStatus = {
+  Active: 'active',
+  Stale: 'stale',
+  Merged: 'merged',
+} as const
+export type WorktreeStatus =
+  (typeof WorktreeStatus)[keyof typeof WorktreeStatus]
+
+/** Free tier limit for concurrent active worktrees per company. */
+export const FREE_TIER_MAX_WORKTREES = 5
+
+/** Default max age for worktree cleanup (7 days in ms). */
+export const WORKTREE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Minimum git version required for worktree support. */
+export const GIT_MIN_VERSION = '2.5.0'

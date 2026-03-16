@@ -160,3 +160,59 @@ export interface LicenseKey {
   last_validated_at: Date | null
   created_at: Date
 }
+
+/**
+ * Agent communication context — injected into AdapterContext during heartbeat.
+ * Enables agents to observe activity, their assigned tasks, and unread comments
+ * without requiring an event bus or direct messaging (FREE tier).
+ */
+export interface AgentCommunicationContext {
+  /** Activity log entries since the agent's last heartbeat (max 50). */
+  recentActivity: ActivityLogEntry[]
+  /** Issues currently checked out by this agent (status = 'in_progress'). */
+  assignedTasks: Issue[]
+  /** Comments on agent's tasks posted since the agent's last heartbeat. */
+  unreadComments: IssueComment[]
+}
+
+export interface AgentWorktree {
+  id: string
+  agent_id: string
+  company_id: string
+  issue_id: string | null
+  repo_path: string
+  worktree_path: string
+  branch: string
+  base_branch: string
+  status: string
+  created_at: Date
+  last_used_at: Date
+}
+
+export interface WorktreeInfo {
+  path: string
+  branch: string
+  baseBranch: string
+  agentId: string
+  companyId: string
+  issueId?: string
+  status: 'active' | 'stale' | 'merged'
+  isDirty: boolean
+  commitsAhead: number
+  commitsBehind: number
+  createdAt: Date
+}
+
+export interface WorktreeConfig {
+  enabled: boolean
+  repoPath: string
+  baseBranch?: string
+  autoBranch?: boolean
+  autoCleanup?: boolean
+}
+
+export interface CleanupResult {
+  removed: string[]
+  stashed: string[]
+  skipped: string[]
+}

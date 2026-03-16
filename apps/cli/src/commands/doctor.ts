@@ -3,6 +3,8 @@
  */
 
 import type { Command } from 'commander'
+import { WorktreeManager } from '@shackleai/core'
+import { GIT_MIN_VERSION } from '@shackleai/shared'
 import { readConfig, getConfigPath } from '../config.js'
 
 const VERSION = '0.1.0'
@@ -70,6 +72,17 @@ async function runDoctor(): Promise<void> {
       )
       allOk = false
     }
+  }
+
+  // 4. Check git version (required for worktree support)
+  const gitCheck = await WorktreeManager.checkGitVersion()
+  if (gitCheck.ok) {
+    console.log(
+      `[OK]   Git ${gitCheck.version} (${GIT_MIN_VERSION}+ required for worktrees)`,
+    )
+  } else {
+    console.log(`[FAIL] ${gitCheck.error}`)
+    allOk = false
   }
 
   console.log('')
