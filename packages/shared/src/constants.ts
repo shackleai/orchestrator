@@ -72,3 +72,46 @@ export const HeartbeatRunStatus = {
 } as const
 export type HeartbeatRunStatus =
   (typeof HeartbeatRunStatus)[keyof typeof HeartbeatRunStatus]
+
+export const CompanyStatus = {
+  Active: 'active',
+  Inactive: 'inactive',
+} as const
+export type CompanyStatus = (typeof CompanyStatus)[keyof typeof CompanyStatus]
+
+export const AgentRole = {
+  General: 'general',
+  Ceo: 'ceo',
+  Manager: 'manager',
+  Worker: 'worker',
+} as const
+export type AgentRole = (typeof AgentRole)[keyof typeof AgentRole]
+
+export const GoalStatus = {
+  Active: 'active',
+  Completed: 'completed',
+  Cancelled: 'cancelled',
+} as const
+export type GoalStatus = (typeof GoalStatus)[keyof typeof GoalStatus]
+
+export const ProjectStatus = {
+  Active: 'active',
+  Completed: 'completed',
+  OnHold: 'on_hold',
+  Cancelled: 'cancelled',
+} as const
+export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus]
+
+export const AgentApiKeyStatus = {
+  Active: 'active',
+  Revoked: 'revoked',
+} as const
+export type AgentApiKeyStatus =
+  (typeof AgentApiKeyStatus)[keyof typeof AgentApiKeyStatus]
+
+export const LicenseTier = {
+  Free: 'free',
+  Pro: 'pro',
+  Enterprise: 'enterprise',
+} as const
+export type LicenseTier = (typeof LicenseTier)[keyof typeof LicenseTier]

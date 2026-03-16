@@ -12,6 +12,11 @@ import {
   PolicyAction,
   GoalLevel,
   HeartbeatRunStatus,
+  CompanyStatus,
+  AgentRole,
+  GoalStatus,
+  ProjectStatus,
+  AgentApiKeyStatus,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -25,10 +30,18 @@ const nonEmpty = z.string().min(1)
 // Company
 // ---------------------------------------------------------------------------
 
+const companyStatusValues = Object.values(CompanyStatus) as [
+  string,
+  ...string[],
+]
+
 export const CreateCompanyInput = z.object({
   name: nonEmpty,
   description: z.string().nullable().optional(),
-  status: z.enum(['active', 'inactive']).optional().default('active'),
+  status: z
+    .enum(companyStatusValues)
+    .optional()
+    .default(CompanyStatus.Active),
   issue_prefix: nonEmpty,
   budget_monthly_cents: z.number().int().min(0).optional().default(0),
 })
@@ -37,7 +50,7 @@ export type CreateCompanyInput = z.infer<typeof CreateCompanyInput>
 export const UpdateCompanyInput = z.object({
   name: nonEmpty.optional(),
   description: z.string().nullable().optional(),
-  status: z.enum(['active', 'inactive']).optional(),
+  status: z.enum(companyStatusValues).optional(),
   issue_prefix: nonEmpty.optional(),
   budget_monthly_cents: z.number().int().min(0).optional(),
 })
@@ -49,20 +62,18 @@ export type UpdateCompanyInput = z.infer<typeof UpdateCompanyInput>
 
 const agentStatusValues = Object.values(AgentStatus) as [string, ...string[]]
 const adapterTypeValues = Object.values(AdapterType) as [string, ...string[]]
+const agentRoleValues = Object.values(AgentRole) as [string, ...string[]]
 
 export const CreateAgentInput = z.object({
   company_id: uuid,
   name: nonEmpty,
   title: z.string().nullable().optional(),
-  role: z
-    .enum(['general', 'ceo', 'manager', 'worker'])
-    .optional()
-    .default('general'),
+  role: z.enum(agentRoleValues).optional().default(AgentRole.General),
   status: z.enum(agentStatusValues).optional().default(AgentStatus.Idle),
   reports_to: uuid.nullable().optional(),
   capabilities: z.string().nullable().optional(),
   adapter_type: z.enum(adapterTypeValues).default(AdapterType.Process),
-  adapter_config: z.record(z.unknown()).optional().default({}),
+  adapter_config: z.record(z.string(), z.unknown()).optional().default({}),
   budget_monthly_cents: z.number().int().min(0).optional().default(0),
 })
 export type CreateAgentInput = z.infer<typeof CreateAgentInput>
@@ -70,12 +81,12 @@ export type CreateAgentInput = z.infer<typeof CreateAgentInput>
 export const UpdateAgentInput = z.object({
   name: nonEmpty.optional(),
   title: z.string().nullable().optional(),
-  role: z.enum(['general', 'ceo', 'manager', 'worker']).optional(),
+  role: z.enum(agentRoleValues).optional(),
   status: z.enum(agentStatusValues).optional(),
   reports_to: uuid.nullable().optional(),
   capabilities: z.string().nullable().optional(),
   adapter_type: z.enum(adapterTypeValues).optional(),
-  adapter_config: z.record(z.unknown()).optional(),
+  adapter_config: z.record(z.string(), z.unknown()).optional(),
   budget_monthly_cents: z.number().int().min(0).optional(),
 })
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>
@@ -123,6 +134,7 @@ export type UpdateIssueInput = z.infer<typeof UpdateIssueInput>
 // ---------------------------------------------------------------------------
 
 const goalLevelValues = Object.values(GoalLevel) as [string, ...string[]]
+const goalStatusValues = Object.values(GoalStatus) as [string, ...string[]]
 
 export const CreateGoalInput = z.object({
   company_id: uuid,
@@ -130,7 +142,7 @@ export const CreateGoalInput = z.object({
   description: z.string().nullable().optional(),
   parent_id: uuid.nullable().optional(),
   level: z.enum(goalLevelValues).default(GoalLevel.Task),
-  status: nonEmpty.optional().default('active'),
+  status: z.enum(goalStatusValues).optional().default(GoalStatus.Active),
   owner_agent_id: uuid.nullable().optional(),
 })
 export type CreateGoalInput = z.infer<typeof CreateGoalInput>
@@ -139,13 +151,21 @@ export type CreateGoalInput = z.infer<typeof CreateGoalInput>
 // Project
 // ---------------------------------------------------------------------------
 
+const projectStatusValues = Object.values(ProjectStatus) as [
+  string,
+  ...string[],
+]
+
 export const CreateProjectInput = z.object({
   company_id: uuid,
   name: nonEmpty,
   description: z.string().nullable().optional(),
   goal_id: uuid.nullable().optional(),
   lead_agent_id: uuid.nullable().optional(),
-  status: nonEmpty.optional().default('active'),
+  status: z
+    .enum(projectStatusValues)
+    .optional()
+    .default(ProjectStatus.Active),
   target_date: z.string().nullable().optional(),
 })
 export type CreateProjectInput = z.infer<typeof CreateProjectInput>
@@ -233,7 +253,7 @@ export const UpdateHeartbeatRunInput = z.object({
   finished_at: z.coerce.date().nullable().optional(),
   exit_code: z.number().int().nullable().optional(),
   error: z.string().nullable().optional(),
-  usage_json: z.record(z.unknown()).nullable().optional(),
+  usage_json: z.record(z.string(), z.unknown()).nullable().optional(),
   session_id_before: z.string().nullable().optional(),
   session_id_after: z.string().nullable().optional(),
   stdout_excerpt: z.string().nullable().optional(),
@@ -244,11 +264,19 @@ export type UpdateHeartbeatRunInput = z.infer<typeof UpdateHeartbeatRunInput>
 // AgentApiKey
 // ---------------------------------------------------------------------------
 
+const agentApiKeyStatusValues = Object.values(AgentApiKeyStatus) as [
+  string,
+  ...string[],
+]
+
 export const CreateAgentApiKeyInput = z.object({
   agent_id: uuid,
   company_id: uuid,
   key_hash: nonEmpty,
   label: z.string().nullable().optional(),
-  status: nonEmpty.optional().default('active'),
+  status: z
+    .enum(agentApiKeyStatusValues)
+    .optional()
+    .default(AgentApiKeyStatus.Active),
 })
 export type CreateAgentApiKeyInput = z.infer<typeof CreateAgentApiKeyInput>
