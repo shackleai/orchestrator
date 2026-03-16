@@ -114,6 +114,7 @@ export type AgentApiKeyStatus =
 export const LicenseTier = {
   Free: 'free',
   Pro: 'pro',
+  Teams: 'teams',
   Enterprise: 'enterprise',
 } as const
 export type LicenseTier = (typeof LicenseTier)[keyof typeof LicenseTier]
