@@ -21,7 +21,15 @@ export type {
   ActivityFilters,
 } from './observatory.js'
 
-export { AdapterRegistry, ProcessAdapter, OpenClawAdapter, CrewAIAdapter } from './adapters/index.js'
+export {
+  AdapterRegistry,
+  ProcessAdapter,
+  HttpAdapter,
+  ClaudeAdapter,
+  McpAdapter,
+  OpenClawAdapter,
+  CrewAIAdapter,
+} from './adapters/index.js'
 export { getLastSessionState, saveSessionState } from './adapters/index.js'
 export type {
   AdapterContext,

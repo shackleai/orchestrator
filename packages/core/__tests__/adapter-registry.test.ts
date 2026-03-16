@@ -1,17 +1,26 @@
 import { describe, it, expect } from 'vitest'
 import { AdapterRegistry } from '../src/adapters/index.js'
 import { ProcessAdapter } from '../src/adapters/process.js'
+import { HttpAdapter } from '../src/adapters/http.js'
+import { ClaudeAdapter } from '../src/adapters/claude.js'
+import { McpAdapter } from '../src/adapters/mcp.js'
 import type { AdapterModule } from '../src/adapters/adapter.js'
 
 describe('AdapterRegistry', () => {
-  it('pre-registers ProcessAdapter on construction', () => {
+  it('pre-registers all built-in adapters on construction', () => {
     const registry = new AdapterRegistry()
 
     expect(registry.has('process')).toBe(true)
-    const adapter = registry.get('process')
-    expect(adapter).toBeInstanceOf(ProcessAdapter)
-    expect(adapter?.type).toBe('process')
-    expect(adapter?.label).toBe('Child Process')
+    expect(registry.has('http')).toBe(true)
+    expect(registry.has('claude')).toBe(true)
+    expect(registry.has('mcp')).toBe(true)
+    expect(registry.has('openclaw')).toBe(true)
+    expect(registry.has('crewai')).toBe(true)
+
+    expect(registry.get('process')).toBeInstanceOf(ProcessAdapter)
+    expect(registry.get('http')).toBeInstanceOf(HttpAdapter)
+    expect(registry.get('claude')).toBeInstanceOf(ClaudeAdapter)
+    expect(registry.get('mcp')).toBeInstanceOf(McpAdapter)
   })
 
   it('returns undefined for unregistered type', () => {
@@ -55,8 +64,8 @@ describe('AdapterRegistry', () => {
     const registry = new AdapterRegistry()
 
     const mockAdapter: AdapterModule = {
-      type: 'http',
-      label: 'HTTP Adapter',
+      type: 'custom',
+      label: 'Custom Adapter',
       async execute() {
         return { exitCode: 0, stdout: '', stderr: '' }
       },
@@ -65,7 +74,15 @@ describe('AdapterRegistry', () => {
     registry.register(mockAdapter)
 
     const all = registry.list()
-    expect(all).toHaveLength(4) // process + openclaw + crewai + http
-    expect(all.map((a) => a.type).sort()).toEqual(['crewai', 'http', 'openclaw', 'process'])
+    expect(all).toHaveLength(7) // process + http + claude + mcp + openclaw + crewai + custom
+    expect(all.map((a) => a.type).sort()).toEqual([
+      'claude',
+      'crewai',
+      'custom',
+      'http',
+      'mcp',
+      'openclaw',
+      'process',
+    ])
   })
 })
