@@ -51,24 +51,40 @@ export class Scheduler {
    * Start the scheduler — loads all agents with cron expressions from DB
    * and registers their schedules.
    */
-  async start(): Promise<void> {
+  async start(companyId?: string): Promise<void> {
     if (this.started) return
     this.started = true
+
+    const query = companyId
+      ? {
+          text: `SELECT id, adapter_config FROM agents
+                 WHERE status IN ('idle', 'active') AND company_id = $1`,
+          params: [companyId],
+        }
+      : {
+          text: `SELECT id, adapter_config FROM agents
+                 WHERE status IN ('idle', 'active')`,
+          params: [] as string[],
+        }
 
     const result = await this.db.query<{
       id: string
       adapter_config: Record<string, unknown> | string
-    }>(
-      `SELECT id, adapter_config FROM agents
-       WHERE status IN ('idle', 'active')`,
-      [],
-    )
+    }>(query.text, query.params)
 
     for (const row of result.rows) {
-      const config =
-        typeof row.adapter_config === 'string'
-          ? (JSON.parse(row.adapter_config) as Record<string, unknown>)
-          : row.adapter_config
+      let config: Record<string, unknown>
+      try {
+        config =
+          typeof row.adapter_config === 'string'
+            ? (JSON.parse(row.adapter_config) as Record<string, unknown>)
+            : row.adapter_config
+      } catch {
+        console.error(
+          `[Scheduler] Invalid adapter_config JSON for agent ${row.id}, skipping`,
+        )
+        continue
+      }
 
       const cronExpr = config?.cron as string | undefined
       if (cronExpr && cron.validate(cronExpr)) {

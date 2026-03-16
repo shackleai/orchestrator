@@ -60,9 +60,6 @@ export class McpAdapter implements AdapterModule {
       }
     }
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let client: any
 
@@ -88,12 +85,19 @@ export class McpAdapter implements AdapterModule {
         },
       }
 
-      const result = await client.callTool({
-        name: toolName,
-        arguments: enrichedParams,
-      })
-
-      clearTimeout(timeoutId)
+      const timeoutMs = timeoutSeconds * 1000
+      const result = await Promise.race([
+        client.callTool({
+          name: toolName,
+          arguments: enrichedParams,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('MCP call timed out')),
+            timeoutMs,
+          ),
+        ),
+      ])
 
       const content = result.content as Array<{ type: string; text?: string }> | undefined
       const textParts = (content ?? [])
@@ -139,9 +143,10 @@ export class McpAdapter implements AdapterModule {
         usage,
       }
     } catch (err) {
-      clearTimeout(timeoutId)
+      const message = err instanceof Error ? err.message : String(err)
 
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      // Check for our Promise.race timeout
+      if (message === 'MCP call timed out') {
         return {
           exitCode: 124,
           stdout: '',
@@ -149,7 +154,6 @@ export class McpAdapter implements AdapterModule {
         }
       }
 
-      const message = err instanceof Error ? err.message : String(err)
       return {
         exitCode: 1,
         stdout: '',

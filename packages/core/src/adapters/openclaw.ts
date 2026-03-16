@@ -12,6 +12,7 @@
 import { spawn } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
+import { getSafeEnv } from './env.js'
 
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
@@ -104,13 +105,14 @@ export class OpenClawAdapter implements AdapterModule {
     // Build environment: inject SHACKLEAI_* vars
     // Note: adapterConfig.envFile is supported for documentation purposes but
     // env file parsing is not implemented — users should set env vars directly.
-    const env: Record<string, string> = {
-      ...process.env,
+    const shackleEnv: Record<string, string> = {
       ...ctx.env,
       SHACKLEAI_RUN_ID: ctx.heartbeatRunId,
       SHACKLEAI_AGENT_ID: ctx.agentId,
       SHACKLEAI_API_URL: (ctx.env.SHACKLEAI_API_URL as string) ?? '',
     }
+
+    const env: Record<string, string> = getSafeEnv(shackleEnv)
 
     if (ctx.task) {
       env.SHACKLEAI_TASK_ID = ctx.task

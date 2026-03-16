@@ -17,7 +17,6 @@ import {
   GoalStatus,
   ProjectStatus,
   AgentApiKeyStatus,
-  WorktreeStatus,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -223,7 +222,8 @@ export const CreateCostEventInput = z.object({
   model: z.string().nullable().optional(),
   input_tokens: z.number().int().min(0),
   output_tokens: z.number().int().min(0),
-  cost_cents: z.number().int().min(0),
+  /** Cost in cents — may be fractional (e.g. 0.35 cents for a cheap model call). */
+  cost_cents: z.number().min(0),
 })
 export type CreateCostEventInput = z.infer<typeof CreateCostEventInput>
 
@@ -286,11 +286,6 @@ export type CreateAgentApiKeyInput = z.infer<typeof CreateAgentApiKeyInput>
 // AgentWorktree
 // ---------------------------------------------------------------------------
 
-const worktreeStatusValues = Object.values(WorktreeStatus) as [
-  string,
-  ...string[],
-]
-
 export const CreateWorktreeInput = z.object({
   agent_id: uuid,
   company_id: uuid,
@@ -307,9 +302,3 @@ export const WorktreeCleanupInput = z.object({
 })
 export type WorktreeCleanupInput = z.infer<typeof WorktreeCleanupInput>
 
-export const UpdateWorktreeStatusInput = z.object({
-  status: z.enum(worktreeStatusValues),
-})
-export type UpdateWorktreeStatusInput = z.infer<
-  typeof UpdateWorktreeStatusInput
->

@@ -115,8 +115,12 @@ export class LicenseManager {
     const keyHash = this.hashKey(key)
 
     // Attempt API validation — gracefully handle offline
-    let tier: string = LicenseTier.Pro // default if API unreachable
+    // Default to Free tier if API is unreachable — never grant paid features offline.
+    // The key is marked as pending_validation; periodicValidation() will upgrade
+    // the tier when connectivity returns and the API confirms the key.
+    let tier: string = LicenseTier.Free
     let validUntil: string | null = null
+    let pendingValidation = true
 
     try {
       const response = await fetch(`${API_BASE}/license/validate`, {
@@ -136,9 +140,9 @@ export class LicenseManager {
       }
       tier = data.tier
       validUntil = data.valid_until
+      pendingValidation = false
     } catch {
-      // Offline or API error — accept the key with Pro tier as fallback.
-      // The key format was valid, so we trust it for now.
+      // Offline or API error — default to Free tier (pending_validation).
       // periodicValidation() will re-check when connectivity returns.
     }
 
@@ -149,9 +153,11 @@ export class LicenseManager {
     )
 
     // Store the hash, NEVER the plaintext key
+    // If API was unreachable, mark as pending_validation so periodicValidation()
+    // knows to re-check when connectivity returns.
     await this.db.query(
       `INSERT INTO license_keys (company_id, key_hash, tier, valid_until, last_validated_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
+       VALUES ($1, $2, $3, $4, ${pendingValidation ? 'NULL' : 'NOW()'})`,
       [this.companyId, keyHash, tier, validUntil],
     )
 
