@@ -20,3 +20,11 @@ export type {
   EventFilters,
   ActivityFilters,
 } from './observatory.js'
+
+export { AdapterRegistry, ProcessAdapter } from './adapters/index.js'
+export { getLastSessionState, saveSessionState } from './adapters/index.js'
+export type {
+  AdapterContext,
+  AdapterModule,
+  AdapterResult,
+} from './adapters/index.js'
