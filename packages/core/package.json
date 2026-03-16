@@ -18,9 +18,7 @@
     "lint": "eslint src/",
     "test": "vitest run"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {
     "@shackleai/db": "workspace:*",
     "@shackleai/shared": "workspace:*"

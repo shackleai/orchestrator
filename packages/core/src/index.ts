@@ -10,3 +10,10 @@ export type {
   AgentSpend,
   DailySpend,
 } from './cost-tracker.js'
+
+export { Observatory } from './observatory.js'
+export type {
+  LogEventInput,
+  EventFilters,
+  ActivityFilters,
+} from './observatory.js'
