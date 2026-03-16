@@ -12,6 +12,7 @@ import { registerTaskCommand } from './commands/task.js'
 import { registerRunCommand } from './commands/run.js'
 import { registerDoctorCommand } from './commands/doctor.js'
 import { registerUpgradeCommand } from './commands/upgrade.js'
+import { registerWorktreeCommand } from './commands/worktree.js'
 
 export const VERSION = '0.1.0'
 
@@ -42,5 +43,6 @@ registerTaskCommand(program)
 registerRunCommand(program)
 registerDoctorCommand(program)
 registerUpgradeCommand(program)
+registerWorktreeCommand(program)
 
 program.parse()

@@ -44,3 +44,5 @@ export { HeartbeatExecutor } from './runner/index.js'
 
 export { LicenseManager } from './license.js'
 export type { LicenseStatus, ActivationResult } from './license.js'
+
+export { WorktreeManager } from './worktree/index.js'

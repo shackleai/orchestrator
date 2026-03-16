@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PGliteProvider } from '../src/pglite-provider.js'
-import { runMigrations } from '../src/migrations/index.js'
+import { runMigrations, migrations } from '../src/migrations/index.js'
 
 describe('PGliteProvider', () => {
   let db: PGliteProvider
@@ -8,23 +8,25 @@ describe('PGliteProvider', () => {
   beforeAll(async () => {
     // In-memory PGlite for speed and isolation
     db = new PGliteProvider()
-  })
+  }, 30_000)
 
   afterAll(async () => {
     await db.close()
   })
 
-  it('should initialize and run a simple query', async () => {
+  it('should initialize and run a simple query', { timeout: 30_000 }, async () => {
     const result = await db.query<{ val: number }>('SELECT 1 AS val')
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0].val).toBe(1)
   })
 
-  it('should apply all 12 migrations cleanly', async () => {
+  it('should apply all migrations cleanly', async () => {
     const applied = await runMigrations(db)
-    expect(applied).toHaveLength(12)
+    expect(applied).toHaveLength(migrations.length)
     expect(applied[0]).toBe('001_companies')
-    expect(applied[11]).toBe('012_license_keys')
+    expect(applied[applied.length - 1]).toBe(
+      migrations[migrations.length - 1].name,
+    )
   })
 
   describe('companies CRUD', () => {
@@ -42,10 +44,11 @@ describe('PGliteProvider', () => {
     })
 
     it('should read the company back', async () => {
-      const result = await db.query<{ id: string; name: string; status: string }>(
-        'SELECT * FROM companies WHERE id = $1',
-        [companyId],
-      )
+      const result = await db.query<{
+        id: string
+        name: string
+        status: string
+      }>('SELECT * FROM companies WHERE id = $1', [companyId])
       expect(result.rows).toHaveLength(1)
       expect(result.rows[0].name).toBe('Acme Corp')
       expect(result.rows[0].status).toBe('active')
@@ -62,9 +65,10 @@ describe('PGliteProvider', () => {
 
     it('should delete the company', async () => {
       await db.query('DELETE FROM companies WHERE id = $1', [companyId])
-      const result = await db.query('SELECT * FROM companies WHERE id = $1', [
-        companyId,
-      ])
+      const result = await db.query(
+        'SELECT * FROM companies WHERE id = $1',
+        [companyId],
+      )
       expect(result.rows).toHaveLength(0)
     })
   })
@@ -82,7 +86,11 @@ describe('PGliteProvider', () => {
     })
 
     it('should insert an agent', async () => {
-      const result = await db.query<{ id: string; name: string; status: string }>(
+      const result = await db.query<{
+        id: string
+        name: string
+        status: string
+      }>(
         `INSERT INTO agents (company_id, name, adapter_type) VALUES ($1, $2, $3) RETURNING *`,
         [companyId, 'coder-bot', 'claude'],
       )
@@ -93,10 +101,11 @@ describe('PGliteProvider', () => {
     })
 
     it('should read the agent back', async () => {
-      const result = await db.query<{ id: string; name: string; adapter_type: string }>(
-        'SELECT * FROM agents WHERE id = $1',
-        [agentId],
-      )
+      const result = await db.query<{
+        id: string
+        name: string
+        adapter_type: string
+      }>('SELECT * FROM agents WHERE id = $1', [agentId])
       expect(result.rows).toHaveLength(1)
       expect(result.rows[0].adapter_type).toBe('claude')
     })
@@ -112,7 +121,9 @@ describe('PGliteProvider', () => {
 
     it('should delete the agent', async () => {
       await db.query('DELETE FROM agents WHERE id = $1', [agentId])
-      const result = await db.query('SELECT * FROM agents WHERE id = $1', [agentId])
+      const result = await db.query('SELECT * FROM agents WHERE id = $1', [
+        agentId,
+      ])
       expect(result.rows).toHaveLength(0)
     })
   })

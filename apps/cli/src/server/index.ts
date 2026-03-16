@@ -14,6 +14,7 @@ import { heartbeatsRouter } from './routes/heartbeats.js'
 import { activityRouter } from './routes/activity.js'
 import { goalsRouter } from './routes/goals.js'
 import { projectsRouter } from './routes/projects.js'
+import { worktreesRouter } from './routes/worktrees.js'
 
 const VERSION = '0.1.0'
 
@@ -34,6 +35,7 @@ export function createApp(db: DatabaseProvider): Hono {
   app.route('/api/companies', activityRouter(db))
   app.route('/api/companies', goalsRouter(db))
   app.route('/api/companies', projectsRouter(db))
+  app.route('/api/companies', worktreesRouter(db))
 
   return app
 }

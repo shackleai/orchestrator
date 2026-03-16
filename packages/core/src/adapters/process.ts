@@ -7,6 +7,7 @@
  */
 
 import { spawn } from 'node:child_process'
+import type { WorktreeConfig } from '@shackleai/shared'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 
 /** Default timeout in milliseconds (300 seconds). */
@@ -54,6 +55,20 @@ export class ProcessAdapter implements AdapterModule {
       env.SHACKLEAI_SESSION_STATE = ctx.sessionState
     }
 
+    // Worktree-aware execution: inject worktree env vars and set cwd
+    const worktreeConfig = ctx.adapterConfig.worktree as
+      | WorktreeConfig
+      | undefined
+    let cwd: string | undefined
+
+    if (worktreeConfig?.enabled && ctx.env.SHACKLEAI_WORKTREE_PATH) {
+      cwd = ctx.env.SHACKLEAI_WORKTREE_PATH
+      env.SHACKLEAI_WORKTREE_PATH = ctx.env.SHACKLEAI_WORKTREE_PATH
+      env.SHACKLEAI_BRANCH = ctx.env.SHACKLEAI_BRANCH ?? ''
+      env.SHACKLEAI_BASE_BRANCH =
+        ctx.env.SHACKLEAI_BASE_BRANCH ?? worktreeConfig.baseBranch ?? 'main'
+    }
+
     return new Promise<AdapterResult>((resolve) => {
       const stdoutChunks: Buffer[] = []
       const stderrChunks: Buffer[] = []
@@ -62,6 +77,7 @@ export class ProcessAdapter implements AdapterModule {
 
       const child = spawn(command, args, {
         env,
+        cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
       })
 

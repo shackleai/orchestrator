@@ -17,6 +17,7 @@ import {
   GoalStatus,
   ProjectStatus,
   AgentApiKeyStatus,
+  WorktreeStatus,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -280,3 +281,35 @@ export const CreateAgentApiKeyInput = z.object({
     .default(AgentApiKeyStatus.Active),
 })
 export type CreateAgentApiKeyInput = z.infer<typeof CreateAgentApiKeyInput>
+
+// ---------------------------------------------------------------------------
+// AgentWorktree
+// ---------------------------------------------------------------------------
+
+const worktreeStatusValues = Object.values(WorktreeStatus) as [
+  string,
+  ...string[],
+]
+
+export const CreateWorktreeInput = z.object({
+  agent_id: uuid,
+  company_id: uuid,
+  repo_path: nonEmpty,
+  branch: nonEmpty,
+  base_branch: nonEmpty.optional().default('main'),
+  issue_id: uuid.nullable().optional(),
+})
+export type CreateWorktreeInput = z.infer<typeof CreateWorktreeInput>
+
+export const WorktreeCleanupInput = z.object({
+  dry_run: z.boolean().optional().default(false),
+  max_age_ms: z.number().int().min(0).optional(),
+})
+export type WorktreeCleanupInput = z.infer<typeof WorktreeCleanupInput>
+
+export const UpdateWorktreeStatusInput = z.object({
+  status: z.enum(worktreeStatusValues),
+})
+export type UpdateWorktreeStatusInput = z.infer<
+  typeof UpdateWorktreeStatusInput
+>
