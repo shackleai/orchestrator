@@ -20,7 +20,12 @@
 
 import { randomUUID } from 'node:crypto'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { TriggerType } from '@shackleai/shared'
+import type {
+  TriggerType,
+  ActivityLogEntry,
+  Issue,
+  IssueComment,
+} from '@shackleai/shared'
 import {
   AgentStatus,
   HeartbeatRunStatus,
@@ -35,12 +40,16 @@ import type { RunnerResult } from '../scheduler.js'
 /** Default timeout in seconds. */
 const DEFAULT_TIMEOUT_S = 300
 
+/** Maximum number of recent activity entries to inject into adapter context. */
+const MAX_RECENT_ACTIVITY = 50
+
 interface AgentRow {
   id: string
   company_id: string
   adapter_type: string
   adapter_config: Record<string, unknown> | string
   status: string
+  last_heartbeat_at: string | null
 }
 
 interface TaskRow {
@@ -75,7 +84,7 @@ export class HeartbeatExecutor {
 
     // ── Step 0: Load agent ──────────────────────────────────────────
     const agentResult = await this.db.query<AgentRow>(
-      `SELECT id, company_id, adapter_type, adapter_config, status
+      `SELECT id, company_id, adapter_type, adapter_config, status, last_heartbeat_at
        FROM agents WHERE id = $1`,
       [agentId],
     )
@@ -138,6 +147,14 @@ export class HeartbeatExecutor {
       const sessionState = await getLastSessionState(agentId, this.db)
       const task = await this.getAssignedTask(agentId)
 
+      // Build agent communication context (async awareness)
+      const lastHeartbeat = agent.last_heartbeat_at ?? null
+      const [recentActivity, assignedTasks, unreadComments] = await Promise.all([
+        this.getRecentActivity(companyId, lastHeartbeat),
+        this.getAssignedTasks(agentId),
+        this.getUnreadComments(agentId, lastHeartbeat),
+      ])
+
       const ctx: AdapterContext = {
         agentId,
         companyId,
@@ -146,6 +163,9 @@ export class HeartbeatExecutor {
         adapterConfig,
         env: {},
         sessionState,
+        recentActivity,
+        assignedTasks,
+        unreadComments,
       }
 
       // Mark run as running
@@ -320,6 +340,76 @@ export class HeartbeatExecutor {
       [agentId],
     )
     return result.rows[0] ?? null
+  }
+
+  /**
+   * Get recent activity log entries for the company since a given timestamp.
+   * If no timestamp, returns the most recent entries (max 50).
+   */
+  private async getRecentActivity(
+    companyId: string,
+    since: string | null,
+  ): Promise<ActivityLogEntry[]> {
+    if (since) {
+      const result = await this.db.query<ActivityLogEntry>(
+        `SELECT id, company_id, entity_type, entity_id, actor_type, actor_id, action, changes, created_at
+         FROM activity_log
+         WHERE company_id = $1 AND created_at > $2
+         ORDER BY created_at DESC
+         LIMIT $3`,
+        [companyId, since, MAX_RECENT_ACTIVITY],
+      )
+      return result.rows
+    }
+
+    const result = await this.db.query<ActivityLogEntry>(
+      `SELECT id, company_id, entity_type, entity_id, actor_type, actor_id, action, changes, created_at
+       FROM activity_log
+       WHERE company_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [companyId, MAX_RECENT_ACTIVITY],
+    )
+    return result.rows
+  }
+
+  /**
+   * Get all issues currently assigned to this agent with status 'in_progress'.
+   */
+  private async getAssignedTasks(agentId: string): Promise<Issue[]> {
+    const result = await this.db.query<Issue>(
+      `SELECT * FROM issues
+       WHERE assignee_agent_id = $1 AND status = 'in_progress'
+       ORDER BY created_at DESC`,
+      [agentId],
+    )
+    return result.rows
+  }
+
+  /**
+   * Get comments on agent's assigned tasks posted since the agent's last heartbeat.
+   * Excludes comments authored by the agent itself.
+   */
+  private async getUnreadComments(
+    agentId: string,
+    since: string | null,
+  ): Promise<IssueComment[]> {
+    if (since) {
+      const result = await this.db.query<IssueComment>(
+        `SELECT ic.* FROM issue_comments ic
+         JOIN issues i ON ic.issue_id = i.id
+         WHERE i.assignee_agent_id = $1
+           AND ic.created_at > $2
+           AND (ic.author_agent_id IS NULL OR ic.author_agent_id != $1)
+         ORDER BY ic.created_at DESC
+         LIMIT $3`,
+        [agentId, since, MAX_RECENT_ACTIVITY],
+      )
+      return result.rows
+    }
+
+    // No previous heartbeat � return empty (no baseline to compare against)
+    return []
   }
 
   private executeWithTimeout<T>(

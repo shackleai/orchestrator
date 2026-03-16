@@ -20,10 +20,10 @@ export function activityRouter(db: DatabaseProvider): Hono<{ Variables: Variable
   })
 
   // GET /api/companies/:id/activity — audit log with query filters
-  // Supports: entity_type, from (date), to (date)
+  // Supports: entity_type, from (date), to (date), since (ISO timestamp), agentId, limit
   app.get('/:id/activity', companyScope, async (c) => {
     const companyId = c.req.param('id')
-    const { entity_type, from, to } = c.req.query()
+    const { entity_type, from, to, since, agentId, limit: limitStr } = c.req.query()
 
     const conditions: string[] = ['company_id = $1']
     const params: unknown[] = [companyId]
@@ -44,10 +44,31 @@ export function activityRouter(db: DatabaseProvider): Hono<{ Variables: Variable
       params.push(to)
     }
 
+    // Agent communication polling params
+    if (since) {
+      conditions.push(`created_at > $${paramIndex++}`)
+      params.push(since)
+    }
+
+    if (agentId) {
+      conditions.push(`actor_id = $${paramIndex++}`)
+      params.push(agentId)
+    }
+
+    // Cap limit to 50 (default 50)
+    const MAX_LIMIT = 50
+    let limit = MAX_LIMIT
+    if (limitStr) {
+      const parsed = parseInt(limitStr, 10)
+      if (!isNaN(parsed) && parsed > 0) {
+        limit = Math.min(parsed, MAX_LIMIT)
+      }
+    }
+
     const where = conditions.join(' AND ')
     const result = await db.query<ActivityLogEntry>(
-      `SELECT * FROM activity_log WHERE ${where} ORDER BY created_at DESC`,
-      params,
+      `SELECT * FROM activity_log WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex}`,
+      [...params, limit],
     )
 
     return c.json({ data: result.rows })
