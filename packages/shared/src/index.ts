@@ -1,4 +1,7 @@
 /**
- * @shackleai/shared — Shared types, utilities, and constants
+ * @shackleai/shared — Shared types, validators, and constants
  */
-export const VERSION = '0.0.0'
+
+export * from './types.js'
+export * from './constants.js'
+export * from './validators.js'
