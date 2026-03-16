@@ -59,11 +59,18 @@ export async function runMigrations(db: DatabaseProvider): Promise<string[]> {
       continue
     }
 
-    // Use exec() because migration SQL may contain multiple statements
-    await db.exec(migration.sql)
-    await db.query('INSERT INTO _migrations (name) VALUES ($1)', [
-      migration.name,
-    ])
+    // Wrap each migration in a transaction for atomicity
+    await db.exec('BEGIN')
+    try {
+      await db.exec(migration.sql)
+      await db.query('INSERT INTO _migrations (name) VALUES ($1)', [
+        migration.name,
+      ])
+      await db.exec('COMMIT')
+    } catch (error) {
+      await db.exec('ROLLBACK')
+      throw error
+    }
     newly.push(migration.name)
   }
 

@@ -25,13 +25,5 @@
   },
   "devDependencies": {
     "@types/pg": "^8.15.4"
-  },
-  "peerDependencies": {
-    "@shackleai/shared": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@shackleai/shared": {
-      "optional": true
-    }
   }
 }

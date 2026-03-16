@@ -13,5 +13,9 @@ CREATE TABLE IF NOT EXISTS goals (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE issues ADD CONSTRAINT fk_issues_goal FOREIGN KEY (goal_id) REFERENCES goals(id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_issues_goal') THEN
+    ALTER TABLE issues ADD CONSTRAINT fk_issues_goal FOREIGN KEY (goal_id) REFERENCES goals(id);
+  END IF;
+END $$;
 `
