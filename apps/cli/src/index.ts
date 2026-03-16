@@ -46,4 +46,12 @@ registerDoctorCommand(program)
 registerUpgradeCommand(program)
 registerWorktreeCommand(program)
 
-program.parse()
+// Only parse when run as CLI entrypoint — not when imported for VERSION etc.
+const isDirectRun =
+  process.argv[1]?.endsWith('index.js') ||
+  process.argv[1]?.endsWith('index.ts') ||
+  process.argv[1]?.includes('@shackleai/orchestrator')
+
+if (isDirectRun) {
+  program.parse()
+}
