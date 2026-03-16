@@ -4,13 +4,11 @@
 
 export type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 export { ProcessAdapter } from './process.js'
-export { OpenClawAdapter } from './openclaw.js'
 export { CrewAIAdapter } from './crewai.js'
 export { getLastSessionState, saveSessionState } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
 import { ProcessAdapter } from './process.js'
-import { OpenClawAdapter } from './openclaw.js'
 import { CrewAIAdapter } from './crewai.js'
 
 /**
@@ -24,7 +22,6 @@ export class AdapterRegistry {
 
   constructor() {
     this.register(new ProcessAdapter())
-    this.register(new OpenClawAdapter())
     this.register(new CrewAIAdapter())
   }
 

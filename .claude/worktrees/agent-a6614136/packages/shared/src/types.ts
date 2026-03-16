@@ -1,0 +1,162 @@
+/**
+ * @shackleai/shared — TypeScript interfaces matching DB tables
+ */
+
+export interface Company {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  issue_prefix: string
+  issue_counter: number
+  budget_monthly_cents: number
+  spent_monthly_cents: number
+  created_at: Date
+  updated_at: Date
+}
+
+export interface Agent {
+  id: string
+  company_id: string
+  name: string
+  title: string | null
+  role: string
+  status: string
+  reports_to: string | null
+  capabilities: string | null
+  adapter_type: string
+  adapter_config: Record<string, unknown>
+  budget_monthly_cents: number
+  spent_monthly_cents: number
+  last_heartbeat_at: Date | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface Issue {
+  id: string
+  company_id: string
+  identifier: string
+  issue_number: number
+  parent_id: string | null
+  goal_id: string | null
+  project_id: string | null
+  title: string
+  description: string | null
+  status: string
+  priority: string
+  assignee_agent_id: string | null
+  started_at: Date | null
+  completed_at: Date | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface Goal {
+  id: string
+  company_id: string
+  parent_id: string | null
+  title: string
+  description: string | null
+  level: string
+  status: string
+  owner_agent_id: string | null
+  created_at: Date
+}
+
+export interface Project {
+  id: string
+  company_id: string
+  goal_id: string | null
+  lead_agent_id: string | null
+  name: string
+  description: string | null
+  status: string
+  target_date: string | null
+  created_at: Date
+}
+
+export interface IssueComment {
+  id: string
+  issue_id: string
+  author_agent_id: string | null
+  content: string
+  parent_id: string | null
+  is_resolved: boolean
+  created_at: Date
+}
+
+export interface Policy {
+  id: string
+  company_id: string
+  agent_id: string | null
+  name: string
+  tool_pattern: string
+  action: string
+  priority: number
+  max_calls_per_hour: number | null
+  created_at: Date
+}
+
+export interface CostEvent {
+  id: string
+  company_id: string
+  agent_id: string | null
+  issue_id: string | null
+  provider: string | null
+  model: string | null
+  input_tokens: number
+  output_tokens: number
+  cost_cents: number
+  occurred_at: Date
+}
+
+export interface HeartbeatRun {
+  id: string
+  company_id: string
+  agent_id: string
+  trigger_type: string
+  status: string
+  started_at: Date | null
+  finished_at: Date | null
+  exit_code: number | null
+  error: string | null
+  usage_json: Record<string, unknown> | null
+  session_id_before: string | null
+  session_id_after: string | null
+  stdout_excerpt: string | null
+  created_at: Date
+}
+
+export interface ActivityLogEntry {
+  id: string
+  company_id: string
+  entity_type: string
+  entity_id: string | null
+  actor_type: string
+  actor_id: string | null
+  action: string
+  changes: Record<string, unknown> | null
+  created_at: Date
+}
+
+export interface AgentApiKey {
+  id: string
+  agent_id: string
+  company_id: string
+  key_hash: string
+  label: string | null
+  status: string
+  last_used_at: Date | null
+  created_at: Date
+}
+
+export interface LicenseKey {
+  id: string
+  company_id: string
+  key_hash: string
+  tier: string
+  valid_until: Date | null
+  last_validated_at: Date | null
+  created_at: Date
+}

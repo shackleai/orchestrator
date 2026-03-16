@@ -1,0 +1,34 @@
+{
+  "name": "@shackleai/core",
+  "version": "0.0.0",
+  "description": "Core orchestration engine for ShackleAI",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@shackleai/db": "workspace:*",
+    "@shackleai/shared": "workspace:*",
+    "micromatch": "^4.0.8",
+    "node-cron": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/micromatch": "^4.0.9",
+    "@types/node-cron": "^3.0.11"
+  }
+}
