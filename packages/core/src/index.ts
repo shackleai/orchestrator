@@ -39,3 +39,6 @@ export type {
 
 export { Scheduler } from './scheduler.js'
 export type { RunnerExecutor, RunnerResult } from './scheduler.js'
+
+export { LicenseManager } from './license.js'
+export type { LicenseStatus, ActivationResult } from './license.js'
