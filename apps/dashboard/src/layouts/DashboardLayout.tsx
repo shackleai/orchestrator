@@ -4,16 +4,24 @@ import {
   LayoutDashboard,
   Bot,
   ListTodo,
+  Activity,
+  DollarSign,
+  Settings,
   Menu,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { UpgradeBanner } from '@/components/UpgradeBanner'
+import { LicenseStatus } from '@/components/LicenseStatus'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/tasks', icon: ListTodo, label: 'Tasks' },
+  { to: '/activity', icon: Activity, label: 'Activity' },
+  { to: '/costs', icon: DollarSign, label: 'Costs' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export function DashboardLayout() {
@@ -83,9 +91,7 @@ export function DashboardLayout() {
 
         {/* Footer */}
         <div className="border-t border-border p-4">
-          <p className="text-xs text-muted-foreground">
-            Orchestrator v0.1.0
-          </p>
+          <LicenseStatus />
         </div>
       </aside>
 
@@ -109,6 +115,7 @@ export function DashboardLayout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <UpgradeBanner />
           <Outlet />
         </main>
       </div>

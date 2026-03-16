@@ -132,3 +132,86 @@ export function fetchActivity(
     `${BASE_URL}/companies/${companyId}/activity${qs ? `?${qs}` : ''}`,
   )
 }
+
+// --- Cost types ---
+
+export interface CostEvent {
+  id: string
+  company_id: string
+  agent_id: string | null
+  issue_id: string | null
+  provider: string | null
+  model: string | null
+  input_tokens: number
+  output_tokens: number
+  cost_cents: number
+  occurred_at: string
+}
+
+export interface CostByAgent {
+  agent_id: string | null
+  total_cost_cents: number
+  total_input_tokens: number
+  total_output_tokens: number
+  event_count: number
+}
+
+// --- Company & License types ---
+
+export interface Company {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  budget_monthly_cents: number
+  spent_monthly_cents: number
+  created_at: string
+  updated_at: string
+}
+
+export interface LicenseKey {
+  id: string
+  company_id: string
+  tier: string
+  valid_until: string | null
+}
+
+// --- Cost fetchers ---
+
+export function fetchCostEvents(
+  companyId: string,
+  filters?: { from?: string; to?: string },
+) {
+  const params = new URLSearchParams()
+  if (filters?.from) params.set('from', filters.from)
+  if (filters?.to) params.set('to', filters.to)
+  const qs = params.toString()
+  return fetchJson<CostEvent[]>(
+    `${BASE_URL}/companies/${companyId}/costs${qs ? `?${qs}` : ''}`,
+  )
+}
+
+export function fetchCostsByAgent(companyId: string) {
+  return fetchJson<CostByAgent[]>(
+    `${BASE_URL}/companies/${companyId}/costs/by-agent`,
+  )
+}
+
+// --- Company & License fetchers ---
+
+export function fetchCompany(companyId: string) {
+  return fetchJson<Company>(`${BASE_URL}/companies/${companyId}`)
+}
+
+export async function fetchLicense(
+  companyId: string,
+): Promise<LicenseKey | null> {
+  try {
+    return await fetchJson<LicenseKey>(
+      `${BASE_URL}/companies/${companyId}/license`,
+    )
+  } catch {
+    // 404 means no license — treat as free tier
+    return null
+  }
+}
