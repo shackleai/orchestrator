@@ -27,6 +27,8 @@ export {
   HttpAdapter,
   ClaudeAdapter,
   McpAdapter,
+  OpenClawAdapter,
+  CrewAIAdapter,
 } from './adapters/index.js'
 export { getLastSessionState, saveSessionState } from './adapters/index.js'
 export type {

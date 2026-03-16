@@ -7,6 +7,8 @@ export { ProcessAdapter } from './process.js'
 export { HttpAdapter } from './http.js'
 export { ClaudeAdapter } from './claude.js'
 export { McpAdapter } from './mcp.js'
+export { OpenClawAdapter } from './openclaw.js'
+export { CrewAIAdapter } from './crewai.js'
 export { getLastSessionState, saveSessionState } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
@@ -14,12 +16,13 @@ import { ProcessAdapter } from './process.js'
 import { HttpAdapter } from './http.js'
 import { ClaudeAdapter } from './claude.js'
 import { McpAdapter } from './mcp.js'
+import { OpenClawAdapter } from './openclaw.js'
+import { CrewAIAdapter } from './crewai.js'
 
 /**
  * AdapterRegistry — maps adapter_type strings to AdapterModule instances.
  *
- * Pre-registers ProcessAdapter on construction. Additional adapters
- * (HTTP, Claude, MCP) are registered by their respective modules.
+ * Pre-registers all built-in adapters on construction.
  */
 export class AdapterRegistry {
   private adapters = new Map<string, AdapterModule>()
@@ -29,6 +32,8 @@ export class AdapterRegistry {
     this.register(new HttpAdapter())
     this.register(new ClaudeAdapter())
     this.register(new McpAdapter())
+    this.register(new OpenClawAdapter())
+    this.register(new CrewAIAdapter())
   }
 
   /** Register an adapter module. Overwrites any existing adapter with the same type. */

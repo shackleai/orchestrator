@@ -41,8 +41,10 @@ export class McpAdapter implements AdapterModule {
         : DEFAULT_TIMEOUT_SECONDS
 
     // Dynamically import MCP SDK to keep it optional at load time
-    let Client: typeof import('@modelcontextprotocol/sdk/client/index.js').Client
-    let StreamableHTTPClientTransport: typeof import('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransport
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let Client: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let StreamableHTTPClientTransport: any
 
     try {
       const clientMod = await import('@modelcontextprotocol/sdk/client/index.js')
@@ -61,7 +63,8 @@ export class McpAdapter implements AdapterModule {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
-    let client: InstanceType<typeof Client> | undefined
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let client: any
 
     try {
       const transport = new StreamableHTTPClientTransport(new URL(url))
@@ -163,7 +166,7 @@ export class McpAdapter implements AdapterModule {
 
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
     try {
-      await import('@modelcontextprotocol/sdk/client/index.js')
+      await import('@modelcontextprotocol/sdk/client/index.js' as string)
       return { ok: true }
     } catch {
       return {
