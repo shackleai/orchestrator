@@ -18,13 +18,17 @@
     "lint": "eslint src/",
     "test": "vitest run"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@shackleai/db": "workspace:*",
     "@shackleai/shared": "workspace:*",
-    "micromatch": "^4.0.8"
+    "micromatch": "^4.0.8",
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
-    "@types/micromatch": "^4.0.9"
+    "@types/micromatch": "^4.0.9",
+    "@types/node-cron": "^3.0.11"
   }
 }
