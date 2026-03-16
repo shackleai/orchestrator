@@ -4,10 +4,16 @@
 
 export type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 export { ProcessAdapter } from './process.js'
+export { HttpAdapter } from './http.js'
+export { ClaudeAdapter } from './claude.js'
+export { McpAdapter } from './mcp.js'
 export { getLastSessionState, saveSessionState } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
 import { ProcessAdapter } from './process.js'
+import { HttpAdapter } from './http.js'
+import { ClaudeAdapter } from './claude.js'
+import { McpAdapter } from './mcp.js'
 
 /**
  * AdapterRegistry — maps adapter_type strings to AdapterModule instances.
@@ -20,6 +26,9 @@ export class AdapterRegistry {
 
   constructor() {
     this.register(new ProcessAdapter())
+    this.register(new HttpAdapter())
+    this.register(new ClaudeAdapter())
+    this.register(new McpAdapter())
   }
 
   /** Register an adapter module. Overwrites any existing adapter with the same type. */

@@ -24,6 +24,7 @@
   "dependencies": {
     "@shackleai/db": "workspace:*",
     "@shackleai/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "micromatch": "^4.0.8",
     "node-cron": "^4.2.1"
   },
