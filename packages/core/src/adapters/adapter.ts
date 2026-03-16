@@ -6,6 +6,12 @@
  * and selected at runtime based on an agent's `adapter_type` column.
  */
 
+import type {
+  ActivityLogEntry,
+  Issue,
+  IssueComment,
+} from '@shackleai/shared'
+
 export interface AdapterContext {
   agentId: string
   companyId: string
@@ -14,6 +20,13 @@ export interface AdapterContext {
   adapterConfig: Record<string, unknown>
   env: Record<string, string>
   sessionState?: string | null
+
+  /** Activity log entries since this agent's last heartbeat (max 50). */
+  recentActivity?: ActivityLogEntry[]
+  /** Issues currently checked out by this agent (status = 'in_progress'). */
+  assignedTasks?: Issue[]
+  /** Comments on agent's tasks posted since this agent's last heartbeat. */
+  unreadComments?: IssueComment[]
 }
 
 export interface AdapterResult {
