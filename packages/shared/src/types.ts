@@ -150,3 +150,13 @@ export interface AgentApiKey {
   last_used_at: Date | null
   created_at: Date
 }
+
+export interface LicenseKey {
+  id: string
+  company_id: string
+  key_hash: string
+  tier: string
+  valid_until: Date | null
+  last_validated_at: Date | null
+  created_at: Date
+}
