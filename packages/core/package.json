@@ -1,16 +1,41 @@
 {
   "name": "@shackleai/core",
-  "version": "0.0.0",
-  "description": "Core orchestration engine for ShackleAI",
+  "version": "0.1.0",
+  "description": "Core orchestration engine for ShackleAI — agent lifecycle, task scheduling, governance, and MCP integration",
+  "keywords": [
+    "ai",
+    "agent",
+    "orchestrator",
+    "shackleai",
+    "core",
+    "mcp",
+    "model-context-protocol",
+    "task-scheduling",
+    "governance"
+  ],
+  "author": "ShackleAI",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shackleai/orchestrator",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/shackleai/orchestrator",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc --build",
@@ -18,9 +43,6 @@
     "lint": "eslint src/",
     "test": "vitest run"
   },
-  "files": [
-    "dist"
-  ],
   "dependencies": {
     "@shackleai/db": "workspace:*",
     "@shackleai/shared": "workspace:*",

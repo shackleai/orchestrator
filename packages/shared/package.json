@@ -1,16 +1,39 @@
 {
   "name": "@shackleai/shared",
-  "version": "0.0.0",
-  "description": "Shared types, utilities, and constants for ShackleAI",
+  "version": "0.1.0",
+  "description": "Shared types, utilities, and constants for the ShackleAI agent orchestrator",
+  "keywords": [
+    "ai",
+    "agent",
+    "orchestrator",
+    "shackleai",
+    "shared",
+    "types",
+    "utilities"
+  ],
+  "author": "ShackleAI",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shackleai/orchestrator",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/shackleai/orchestrator",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc --build",
@@ -18,9 +41,6 @@
     "lint": "eslint src/",
     "test": "vitest run --passWithNoTests"
   },
-  "files": [
-    "dist"
-  ],
   "dependencies": {
     "zod": "^3.24.0"
   }
