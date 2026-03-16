@@ -1,0 +1,4 @@
+/**
+ * @shackleai/orchestrator — CLI entrypoint
+ */
+export const VERSION = '0.0.0'
