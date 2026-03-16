@@ -34,7 +34,14 @@ importers:
 
   apps/dashboard: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@shackleai/db':
+        specifier: workspace:*
+        version: link:../db
+      '@shackleai/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/db:
     dependencies:
