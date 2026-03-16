@@ -142,11 +142,11 @@ describe('agent CLI command — API integration', () => {
     )
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      data: { triggered: boolean; reason?: string; agent?: { last_heartbeat_at: string } }
+      data: { triggered: boolean; agent: { last_heartbeat_at: string } }
     }
     // No scheduler in test app — wakeup falls back to timestamp-only update
     expect(body.data.triggered).toBe(false)
-    expect(body.data.reason).toBeTruthy()
+    expect(body.data.agent.last_heartbeat_at).toBeTruthy()
   })
 
   it('lifecycle actions return 404 for non-existent agent', async () => {
