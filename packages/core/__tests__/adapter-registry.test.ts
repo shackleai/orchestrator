@@ -65,7 +65,7 @@ describe('AdapterRegistry', () => {
     registry.register(mockAdapter)
 
     const all = registry.list()
-    expect(all).toHaveLength(2) // process + http
-    expect(all.map((a) => a.type).sort()).toEqual(['http', 'process'])
+    expect(all).toHaveLength(3) // process + crewai + http
+    expect(all.map((a) => a.type).sort()).toEqual(['crewai', 'http', 'process'])
   })
 })
