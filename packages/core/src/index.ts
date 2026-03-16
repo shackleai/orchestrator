@@ -39,3 +39,5 @@ export type {
 
 export { Scheduler } from './scheduler.js'
 export type { RunnerExecutor, RunnerResult } from './scheduler.js'
+
+export { HeartbeatExecutor } from './runner/index.js'
