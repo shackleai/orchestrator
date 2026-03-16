@@ -37,6 +37,8 @@ export const AdapterType = {
   Http: 'http',
   Claude: 'claude',
   Mcp: 'mcp',
+  OpenClaw: 'openclaw',
+  CrewAI: 'crewai',
 } as const
 export type AdapterType = (typeof AdapterType)[keyof typeof AdapterType]
 
