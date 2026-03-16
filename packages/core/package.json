@@ -21,6 +21,10 @@
   "files": ["dist"],
   "dependencies": {
     "@shackleai/db": "workspace:*",
-    "@shackleai/shared": "workspace:*"
+    "@shackleai/shared": "workspace:*",
+    "micromatch": "^4.0.8"
+  },
+  "devDependencies": {
+    "@types/micromatch": "^4.0.9"
   }
 }
