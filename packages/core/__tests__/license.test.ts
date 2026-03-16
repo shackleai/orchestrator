@@ -125,10 +125,8 @@ describe('LicenseManager', () => {
       )
 
       const result = await mgr.activate('sk_shackle_live_offlinekey123')
-      // Falls back to Pro tier when offline
-      expect(result.tier).toBe('pro')
-      expect(result.features).toContain('api_access')
-      expect(result.features).toContain('unlimited_agents')
+      // Falls back to Free tier when offline (security fix — no Pro without validation)
+      expect(result.tier).toBe('free')
     })
 
     it('throws when API returns non-ok status', async () => {
@@ -144,8 +142,8 @@ describe('LicenseManager', () => {
       )
 
       const result = await mgr.activate('sk_shackle_live_rejectedkey12')
-      // Falls back to pro tier
-      expect(result.tier).toBe('pro')
+      // Falls back to free tier (security fix — no Pro without validation)
+      expect(result.tier).toBe('free')
     })
   })
 
