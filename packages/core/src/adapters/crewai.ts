@@ -15,6 +15,9 @@ import { existsSync } from 'node:fs'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
 
+const IS_WIN = process.platform === 'win32'
+const DEFAULT_PYTHON = IS_WIN ? 'python' : 'python3'
+
 /** Default timeout in milliseconds (600 seconds). */
 const DEFAULT_TIMEOUT_MS = 600_000
 
@@ -125,7 +128,7 @@ export class CrewAIAdapter implements AdapterModule {
     const pythonPath =
       typeof ctx.adapterConfig.pythonPath === 'string'
         ? ctx.adapterConfig.pythonPath
-        : 'python3'
+        : DEFAULT_PYTHON
 
     const entrypoint = ctx.adapterConfig.entrypoint as string | undefined
     if (!entrypoint) {
@@ -159,6 +162,7 @@ export class CrewAIAdapter implements AdapterModule {
       companyId: ctx.companyId,
       heartbeatRunId: ctx.heartbeatRunId,
       sessionState: ctx.sessionState ?? null,
+      ancestry: ctx.ancestry ?? null,
     })
 
     // Build args
@@ -278,7 +282,7 @@ export class CrewAIAdapter implements AdapterModule {
   }
 
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
-    const pythonPath = 'python3'
+    const pythonPath = DEFAULT_PYTHON
 
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const child = spawn(pythonPath, [

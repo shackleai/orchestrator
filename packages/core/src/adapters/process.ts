@@ -11,6 +11,8 @@ import type { WorktreeConfig } from '@shackleai/shared'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
 
+const IS_WIN = process.platform === 'win32'
+
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
 
@@ -49,6 +51,16 @@ export class ProcessAdapter implements AdapterModule {
       env.SHACKLEAI_TASK_ID = ctx.task
     }
 
+    if (ctx.ancestry?.mission) {
+      env.SHACKLEAI_MISSION = ctx.ancestry.mission
+    }
+    if (ctx.ancestry?.project) {
+      env.SHACKLEAI_PROJECT = ctx.ancestry.project.name
+    }
+    if (ctx.ancestry?.goal) {
+      env.SHACKLEAI_GOAL = ctx.ancestry.goal.name
+    }
+
     if (ctx.env.SHACKLEAI_API_KEY) {
       env.SHACKLEAI_API_KEY = ctx.env.SHACKLEAI_API_KEY
     }
@@ -81,6 +93,7 @@ export class ProcessAdapter implements AdapterModule {
         env,
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: IS_WIN,
       })
 
       child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))

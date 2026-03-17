@@ -14,6 +14,9 @@ import { access, constants } from 'node:fs/promises'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
 
+const IS_WIN = process.platform === 'win32'
+const DEFAULT_PYTHON = IS_WIN ? 'python' : 'python3'
+
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
 
@@ -83,7 +86,7 @@ export class OpenClawAdapter implements AdapterModule {
       }
     }
 
-    const pythonPath = (ctx.adapterConfig.pythonPath as string) ?? 'python3'
+    const pythonPath = (ctx.adapterConfig.pythonPath as string) ?? DEFAULT_PYTHON
     const timeoutMs =
       typeof ctx.adapterConfig.timeout === 'number'
         ? ctx.adapterConfig.timeout * 1000
@@ -96,6 +99,7 @@ export class OpenClawAdapter implements AdapterModule {
       companyId: ctx.companyId,
       heartbeatRunId: ctx.heartbeatRunId,
       sessionState: ctx.sessionState ?? null,
+      ancestry: ctx.ancestry ?? null,
     })
 
     const sessionId = ctx.sessionState ?? ctx.heartbeatRunId
@@ -203,7 +207,7 @@ export class OpenClawAdapter implements AdapterModule {
   }
 
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
-    const pythonPath = process.platform === 'win32' ? 'python' : 'python3'
+    const pythonPath = DEFAULT_PYTHON
 
     // Step 1: Check if Python is available
     const pythonCheck = await this.spawnCheck(pythonPath, ['--version'])
