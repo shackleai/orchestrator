@@ -2,6 +2,7 @@
  * `shackleai start` — Start Hono server with API routes
  */
 
+import net from 'node:net'
 import { serve } from '@hono/node-server'
 import { PGliteProvider, PgProvider, runMigrations } from '@shackleai/db'
 import type { DatabaseProvider } from '@shackleai/db'
@@ -70,7 +71,13 @@ export async function startCommand(options: { port: number }): Promise<void> {
 
   const app = createApp(db, { scheduler })
 
-  const port = options.port
+  // Find an available port — try requested port first, then auto-increment
+  const requestedPort = options.port
+  const port = await findAvailablePort(requestedPort, options.port !== 4800)
+
+  if (port !== requestedPort) {
+    console.log(`  Port ${requestedPort} is in use — using ${port} instead.\n`)
+  }
 
   // Persist port to config so other CLI commands can find it
   await writeConfig({ ...config, port })
@@ -85,4 +92,40 @@ export async function startCommand(options: { port: number }): Promise<void> {
   `)
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+}
+
+/** Check if a port is available by trying to listen on it */
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once('error', () => resolve(false))
+    server.once('listening', () => {
+      server.close(() => resolve(true))
+    })
+    server.listen(port, '127.0.0.1')
+  })
+}
+
+/** Find an available port starting from the requested one */
+async function findAvailablePort(startPort: number, strict: boolean): Promise<number> {
+  // If user explicitly set --port, fail hard if it's taken
+  if (strict) {
+    const available = await isPortAvailable(startPort)
+    if (!available) {
+      console.error(`  Error: Port ${startPort} is already in use.`)
+      process.exit(1)
+    }
+    return startPort
+  }
+
+  // Auto-find: try startPort, then +1, +2, ... up to 10 attempts
+  for (let i = 0; i < 10; i++) {
+    const candidate = startPort + i
+    if (await isPortAvailable(candidate)) {
+      return candidate
+    }
+  }
+
+  console.error(`  Error: No available port found in range ${startPort}-${startPort + 9}.`)
+  process.exit(1)
 }
