@@ -161,6 +161,16 @@ export const CreateGoalInput = z.object({
 })
 export type CreateGoalInput = z.infer<typeof CreateGoalInput>
 
+export const UpdateGoalInput = z.object({
+  title: nonEmpty.optional(),
+  description: z.string().nullable().optional(),
+  parent_id: uuid.nullable().optional(),
+  level: z.enum(goalLevelValues).optional(),
+  status: z.enum(goalStatusValues).optional(),
+  owner_agent_id: uuid.nullable().optional(),
+})
+export type UpdateGoalInput = z.infer<typeof UpdateGoalInput>
+
 // ---------------------------------------------------------------------------
 // Project
 // ---------------------------------------------------------------------------
@@ -183,6 +193,16 @@ export const CreateProjectInput = z.object({
   target_date: z.string().nullable().optional(),
 })
 export type CreateProjectInput = z.infer<typeof CreateProjectInput>
+
+export const UpdateProjectInput = z.object({
+  name: nonEmpty.optional(),
+  description: z.string().nullable().optional(),
+  goal_id: uuid.nullable().optional(),
+  lead_agent_id: uuid.nullable().optional(),
+  status: z.enum(projectStatusValues).optional(),
+  target_date: z.string().nullable().optional(),
+})
+export type UpdateProjectInput = z.infer<typeof UpdateProjectInput>
 
 // ---------------------------------------------------------------------------
 // IssueComment

@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Project } from '@shackleai/shared'
-import { CreateProjectInput } from '@shackleai/shared'
+import { CreateProjectInput, UpdateProjectInput } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 import { parsePagination } from '../pagination.js'
@@ -21,13 +21,25 @@ export function projectsRouter(db: DatabaseProvider): Hono<{ Variables: Variable
     return next()
   })
 
-  // GET /api/companies/:id/projects — list projects
+  // GET /api/companies/:id/projects — list projects (with optional goal_id filter)
   app.get('/:id/projects', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const { limit, offset } = parsePagination(c)
+    const goalId = c.req.query('goal_id')
+
+    const conditions: string[] = ['company_id = $1']
+    const params: unknown[] = [companyId]
+    let paramIndex = 2
+
+    if (goalId) {
+      conditions.push(`goal_id = $${paramIndex++}`)
+      params.push(goalId)
+    }
+
+    const where = conditions.join(' AND ')
     const result = await db.query<Project>(
-      `SELECT * FROM projects WHERE company_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-      [companyId, limit, offset],
+      `SELECT * FROM projects WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset],
     )
     return c.json({ data: result.rows })
   })
@@ -67,6 +79,121 @@ export function projectsRouter(db: DatabaseProvider): Hono<{ Variables: Variable
     )
 
     return c.json({ data: result.rows[0] }, 201)
+  })
+
+  // GET /api/companies/:id/projects/:projectId — project detail
+  app.get('/:id/projects/:projectId', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const projectId = c.req.param('projectId')
+
+    const result = await db.query<
+      Project & {
+        goal_title: string | null
+        goal_level: string | null
+        issues_count: number
+      }
+    >(
+      `SELECT p.*,
+              g.title AS goal_title, g.level AS goal_level,
+              (SELECT COUNT(*)::int FROM issues i WHERE i.project_id = p.id) AS issues_count
+       FROM projects p
+       LEFT JOIN goals g ON g.id = p.goal_id
+       WHERE p.id = $1 AND p.company_id = $2`,
+      [projectId, companyId],
+    )
+
+    if (result.rows.length === 0) {
+      return c.json({ error: 'Project not found' }, 404)
+    }
+
+    return c.json({ data: result.rows[0] })
+  })
+
+  // PATCH /api/companies/:id/projects/:projectId — update project
+  app.patch('/:id/projects/:projectId', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const projectId = c.req.param('projectId')
+
+    const existing = await db.query<Project>(
+      `SELECT id FROM projects WHERE id = $1 AND company_id = $2`,
+      [projectId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Project not found' }, 404)
+    }
+
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
+
+    const parsed = UpdateProjectInput.safeParse(body)
+    if (!parsed.success) {
+      return c.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        400,
+      )
+    }
+
+    const updates = parsed.data
+    const fields = Object.keys(updates) as string[]
+
+    if (fields.length === 0) {
+      const result = await db.query<Project>(
+        `SELECT * FROM projects WHERE id = $1 AND company_id = $2`,
+        [projectId, companyId],
+      )
+      return c.json({ data: result.rows[0] })
+    }
+
+    const setClauses = fields.map((f, i) => `${f} = $${i + 3}`).join(', ')
+    const values = fields.map((f) => (updates as Record<string, unknown>)[f])
+
+    const result = await db.query<Project>(
+      `UPDATE projects SET ${setClauses}
+       WHERE id = $1 AND company_id = $2
+       RETURNING *`,
+      [projectId, companyId, ...values],
+    )
+
+    return c.json({ data: result.rows[0] })
+  })
+
+  // DELETE /api/companies/:id/projects/:projectId — delete (409 if linked issues)
+  app.delete('/:id/projects/:projectId', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const projectId = c.req.param('projectId')
+
+    const existing = await db.query<Project>(
+      `SELECT id FROM projects WHERE id = $1 AND company_id = $2`,
+      [projectId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Project not found' }, 404)
+    }
+
+    const linkedIssues = await db.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM issues WHERE project_id = $1`,
+      [projectId],
+    )
+    if (linkedIssues.rows[0].count > 0) {
+      return c.json(
+        {
+          error: 'Cannot delete project with linked issues',
+          linked_issues: linkedIssues.rows[0].count,
+        },
+        409,
+      )
+    }
+
+    await db.query(
+      `DELETE FROM projects WHERE id = $1 AND company_id = $2`,
+      [projectId, companyId],
+    )
+
+    return c.json({ data: { deleted: true } })
   })
 
   return app
