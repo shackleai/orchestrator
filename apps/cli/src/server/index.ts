@@ -21,6 +21,7 @@ import { goalsRouter } from './routes/goals.js'
 import { projectsRouter } from './routes/projects.js'
 import { worktreesRouter } from './routes/worktrees.js'
 import { toolCallsRouter } from './routes/tool-calls.js'
+import { commentsRouter } from './routes/comments.js'
 
 import { VERSION } from '../index.js'
 
@@ -47,6 +48,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', projectsRouter(db))
   app.route('/api/companies', worktreesRouter(db))
   app.route('/api/companies', toolCallsRouter(db))
+  app.route('/api/companies', commentsRouter(db, options?.scheduler))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)

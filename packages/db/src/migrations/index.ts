@@ -13,6 +13,7 @@ import * as m011 from './011_api_keys.js'
 import * as m012 from './012_license_keys.js'
 import * as m013 from './013_agent_worktrees.js'
 import * as m014 from './014_tool_calls.js'
+import * as m015 from './015_indexes.js'
 
 export interface Migration {
   name: string
@@ -34,6 +35,7 @@ const migrations: Migration[] = [
   m012,
   m013,
   m014,
+  m015,
 ]
 
 /**
