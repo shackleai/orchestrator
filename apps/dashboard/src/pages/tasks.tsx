@@ -24,8 +24,11 @@ import {
   type Agent,
   type CreateTaskPayload,
 } from '@/lib/api'
+import { Pagination } from '@/components/ui/pagination'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
+
+const TASKS_PAGE_SIZE = 20
 
 const statusOptions = [
   { value: '', label: 'All statuses' },
@@ -229,16 +232,37 @@ export function TasksPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [page, setPage] = useState(0)
 
-  const { data: tasks, isLoading, error } = useQuery<Issue[]>({
-    queryKey: ['tasks', companyId, statusFilter, priorityFilter],
+  // Reset to page 0 when filters change
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value)
+    setPage(0)
+  }
+  const handlePriorityChange = (value: string) => {
+    setPriorityFilter(value)
+    setPage(0)
+  }
+
+  const { data: rawTasks, isLoading, error } = useQuery<Issue[]>({
+    queryKey: ['tasks', companyId, statusFilter, priorityFilter, page],
     queryFn: () =>
-      fetchTasks(companyId!, {
-        status: statusFilter || undefined,
-        priority: priorityFilter || undefined,
-      }),
+      fetchTasks(
+        companyId!,
+        {
+          status: statusFilter || undefined,
+          priority: priorityFilter || undefined,
+        },
+        {
+          limit: TASKS_PAGE_SIZE + 1,
+          offset: page * TASKS_PAGE_SIZE,
+        },
+      ),
     enabled: !!companyId,
   })
+
+  const hasMore = (rawTasks?.length ?? 0) > TASKS_PAGE_SIZE
+  const tasks = rawTasks ? rawTasks.slice(0, TASKS_PAGE_SIZE) : undefined
 
   return (
     <div className="space-y-4">
@@ -247,7 +271,7 @@ export function TasksPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => handleStatusChange(e.target.value)}
             className="w-40"
             aria-label="Filter by status"
           >
@@ -259,7 +283,7 @@ export function TasksPage() {
           </Select>
           <Select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
+            onChange={(e) => handlePriorityChange(e.target.value)}
             className="w-40"
             aria-label="Filter by priority"
           >
@@ -290,7 +314,13 @@ export function TasksPage() {
           Failed to load tasks: {(error as Error).message}
         </div>
       ) : !tasks || tasks.length === 0 ? (
-        <TasksEmpty />
+        page === 0 ? (
+          <TasksEmpty />
+        ) : (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            No more tasks to display.
+          </div>
+        )
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -342,6 +372,13 @@ export function TasksPage() {
                 ))}
               </TableBody>
             </Table>
+            <Pagination
+              page={page}
+              pageSize={TASKS_PAGE_SIZE}
+              total={-1}
+              hasMore={hasMore}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
       )}

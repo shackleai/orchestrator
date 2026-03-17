@@ -7,7 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { fetchActivity, type ActivityLogEntry } from '@/lib/api'
+import { Pagination } from '@/components/ui/pagination'
 import { formatRelativeTime } from '@/lib/utils'
+
+const ACTIVITY_PAGE_SIZE = 30
 
 const entityTypeOptions = [
   { value: '', label: 'All entities' },
@@ -65,18 +68,43 @@ export function ActivityPage() {
   const [entityType, setEntityType] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const [page, setPage] = useState(0)
 
-  const { data: entries, isLoading, error } = useQuery<ActivityLogEntry[]>({
-    queryKey: ['activity', companyId, entityType, fromDate, toDate],
+  // Reset to page 0 when filters change
+  const handleEntityTypeChange = (value: string) => {
+    setEntityType(value)
+    setPage(0)
+  }
+  const handleFromDateChange = (value: string) => {
+    setFromDate(value)
+    setPage(0)
+  }
+  const handleToDateChange = (value: string) => {
+    setToDate(value)
+    setPage(0)
+  }
+
+  const { data: rawEntries, isLoading, error } = useQuery<ActivityLogEntry[]>({
+    queryKey: ['activity', companyId, entityType, fromDate, toDate, page],
     queryFn: () =>
-      fetchActivity(companyId!, {
-        entity_type: entityType || undefined,
-        from: fromDate || undefined,
-        to: toDate || undefined,
-      }),
+      fetchActivity(
+        companyId!,
+        {
+          entity_type: entityType || undefined,
+          from: fromDate || undefined,
+          to: toDate || undefined,
+        },
+        {
+          limit: ACTIVITY_PAGE_SIZE + 1,
+          offset: page * ACTIVITY_PAGE_SIZE,
+        },
+      ),
     enabled: !!companyId,
     refetchInterval: 10_000,
   })
+
+  const hasMore = (rawEntries?.length ?? 0) > ACTIVITY_PAGE_SIZE
+  const entries = rawEntries ? rawEntries.slice(0, ACTIVITY_PAGE_SIZE) : undefined
 
   return (
     <div className="space-y-4">
@@ -85,7 +113,7 @@ export function ActivityPage() {
         <div className="flex flex-wrap gap-2">
           <Select
             value={entityType}
-            onChange={(e) => setEntityType(e.target.value)}
+            onChange={(e) => handleEntityTypeChange(e.target.value)}
             className="w-36"
             aria-label="Filter by entity type"
           >
@@ -98,7 +126,7 @@ export function ActivityPage() {
           <Input
             type="date"
             value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
+            onChange={(e) => handleFromDateChange(e.target.value)}
             className="w-36"
             aria-label="From date"
             placeholder="From"
@@ -106,7 +134,7 @@ export function ActivityPage() {
           <Input
             type="date"
             value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
+            onChange={(e) => handleToDateChange(e.target.value)}
             className="w-36"
             aria-label="To date"
             placeholder="To"
@@ -121,17 +149,23 @@ export function ActivityPage() {
           Failed to load activity: {(error as Error).message}
         </div>
       ) : !entries || entries.length === 0 ? (
-        <ActivityEmpty />
+        page === 0 ? (
+          <ActivityEmpty />
+        ) : (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            No more activity to display.
+          </div>
+        )
       ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              {entries.length} event{entries.length !== 1 ? 's' : ''}
+              {entries.length} event{entries.length !== 1 ? 's' : ''} on this page
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-0">
             <ul
-              className="max-h-[calc(100vh-20rem)] space-y-2 overflow-y-auto"
+              className="space-y-2"
               role="list"
             >
               {entries.map((entry) => (
@@ -166,6 +200,13 @@ export function ActivityPage() {
                 </li>
               ))}
             </ul>
+            <Pagination
+              page={page}
+              pageSize={ACTIVITY_PAGE_SIZE}
+              total={-1}
+              hasMore={hasMore}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
       )}

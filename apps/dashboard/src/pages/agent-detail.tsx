@@ -16,8 +16,11 @@ import {
 } from '@/components/ui/table'
 import { Select } from '@/components/ui/select'
 import { fetchAgent, fetchHeartbeats, wakeupAgent, updateAgent, pauseAgent, resumeAgent, terminateAgent, type Agent, type HeartbeatRun } from '@/lib/api'
+import { Pagination } from '@/components/ui/pagination'
 import { cn, formatCents, formatDate, formatRelativeTime } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
+
+const HEARTBEATS_PAGE_SIZE = 10
 
 function cronToLabel(cron: string | undefined): string {
   if (!cron) return 'Manual'
@@ -287,12 +290,21 @@ export function AgentDetailPage() {
     refetchInterval: 5_000,
   })
 
-  const { data: heartbeats, isLoading: heartbeatsLoading } = useQuery<HeartbeatRun[]>({
-    queryKey: ['heartbeats', companyId, agentId],
-    queryFn: () => fetchHeartbeats(companyId!, agentId!),
+  const [heartbeatPage, setHeartbeatPage] = useState(0)
+
+  const { data: rawHeartbeats, isLoading: heartbeatsLoading } = useQuery<HeartbeatRun[]>({
+    queryKey: ['heartbeats', companyId, agentId, heartbeatPage],
+    queryFn: () =>
+      fetchHeartbeats(companyId!, agentId!, {
+        limit: HEARTBEATS_PAGE_SIZE + 1,
+        offset: heartbeatPage * HEARTBEATS_PAGE_SIZE,
+      }),
     enabled: !!companyId && !!agentId,
     refetchInterval: 5_000,
   })
+
+  const heartbeatsHasMore = (rawHeartbeats?.length ?? 0) > HEARTBEATS_PAGE_SIZE
+  const heartbeats = rawHeartbeats ? rawHeartbeats.slice(0, HEARTBEATS_PAGE_SIZE) : undefined
 
   if (agentLoading) return <DetailSkeleton />
   if (agentError) {
@@ -547,11 +559,26 @@ export function AgentDetailPage() {
               ))}
             </div>
           ) : !heartbeats || heartbeats.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">
-              No heartbeat data yet
-            </p>
+            heartbeatPage === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                No heartbeat data yet
+              </p>
+            ) : (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                No more heartbeats to display.
+              </p>
+            )
           ) : (
-            <HeartbeatTable heartbeats={heartbeats} />
+            <>
+              <HeartbeatTable heartbeats={heartbeats} />
+              <Pagination
+                page={heartbeatPage}
+                pageSize={HEARTBEATS_PAGE_SIZE}
+                total={-1}
+                hasMore={heartbeatsHasMore}
+                onPageChange={setHeartbeatPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>

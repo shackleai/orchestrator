@@ -104,27 +104,53 @@ export function fetchDashboard(companyId: string) {
   return fetchJson<DashboardData>(`${BASE_URL}/companies/${companyId}/dashboard`)
 }
 
-export function fetchAgents(companyId: string) {
-  return fetchJson<Agent[]>(`${BASE_URL}/companies/${companyId}/agents`)
+export function fetchAgents(
+  companyId: string,
+  pagination?: { limit: number; offset: number },
+) {
+  const params = new URLSearchParams()
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
+  const qs = params.toString()
+  return fetchJson<Agent[]>(
+    `${BASE_URL}/companies/${companyId}/agents${qs ? `?${qs}` : ''}`,
+  )
 }
 
 export function fetchAgent(companyId: string, agentId: string) {
   return fetchJson<Agent>(`${BASE_URL}/companies/${companyId}/agents/${agentId}`)
 }
 
-export function fetchHeartbeats(companyId: string, agentId: string) {
+export function fetchHeartbeats(
+  companyId: string,
+  agentId: string,
+  pagination?: { limit: number; offset: number },
+) {
+  const params = new URLSearchParams()
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
+  const qs = params.toString()
   return fetchJson<HeartbeatRun[]>(
-    `${BASE_URL}/companies/${companyId}/agents/${agentId}/heartbeats`,
+    `${BASE_URL}/companies/${companyId}/agents/${agentId}/heartbeats${qs ? `?${qs}` : ''}`,
   )
 }
 
 export function fetchTasks(
   companyId: string,
   filters?: { status?: string; priority?: string },
+  pagination?: { limit: number; offset: number },
 ) {
   const params = new URLSearchParams()
   if (filters?.status) params.set('status', filters.status)
   if (filters?.priority) params.set('priority', filters.priority)
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
   const qs = params.toString()
   return fetchJson<Issue[]>(
     `${BASE_URL}/companies/${companyId}/issues${qs ? `?${qs}` : ''}`,
@@ -134,11 +160,16 @@ export function fetchTasks(
 export function fetchActivity(
   companyId: string,
   filters?: { entity_type?: string; from?: string; to?: string },
+  pagination?: { limit: number; offset: number },
 ) {
   const params = new URLSearchParams()
   if (filters?.entity_type) params.set('entity_type', filters.entity_type)
   if (filters?.from) params.set('from', filters.from)
   if (filters?.to) params.set('to', filters.to)
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
   const qs = params.toString()
   return fetchJson<ActivityLogEntry[]>(
     `${BASE_URL}/companies/${companyId}/activity${qs ? `?${qs}` : ''}`,

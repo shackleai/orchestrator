@@ -10,8 +10,9 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { fetchDashboard, type DashboardData } from '@/lib/api'
+import { fetchDashboard, fetchAgents, type DashboardData, type Agent } from '@/lib/api'
 import { formatCents, formatRelativeTime } from '@/lib/utils'
+import { OnboardingWizard } from '@/components/onboarding'
 
 function StatCard({
   label,
@@ -101,8 +102,18 @@ export function OverviewPage() {
     refetchInterval: 15_000,
   })
 
-  if (isLoading) return <OverviewSkeleton />
+  const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
+    queryKey: ['agents', companyId],
+    queryFn: () => fetchAgents(companyId!),
+    enabled: !!companyId,
+    staleTime: 30_000,
+  })
+
+  const isFirstTime = !agentsLoading && agents !== undefined && agents.length === 0
+
+  if (isLoading || agentsLoading) return <OverviewSkeleton />
   if (error) return <OverviewError message={(error as Error).message} />
+  if (isFirstTime && companyId) return <OnboardingWizard companyId={companyId} />
   if (!data) return <OverviewEmpty />
 
   return (

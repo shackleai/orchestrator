@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { UpgradeBanner } from '@/components/UpgradeBanner'
 import { LicenseStatus } from '@/components/LicenseStatus'
 import { CompanySelector } from '@/components/CompanySelector'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
@@ -46,7 +47,7 @@ export function DashboardLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-zinc-950 transition-transform duration-200 lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-background transition-transform duration-200 lg:static lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -60,15 +61,18 @@ export function DashboardLayout() {
               ShackleAI
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Close sidebar"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close sidebar"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Company selector */}
@@ -108,7 +112,7 @@ export function DashboardLayout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex h-14 items-center gap-4 border-b border-border bg-zinc-950 px-4 lg:px-6">
+        <header className="flex h-14 items-center gap-4 border-b border-border bg-background px-4 lg:px-6">
           <Button
             variant="ghost"
             size="icon"

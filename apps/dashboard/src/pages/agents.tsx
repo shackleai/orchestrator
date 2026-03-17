@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { Bot, Plus, Play, Pause, XCircle, Loader2 } from 'lucide-react'
+import { Bot, Plus, Play, Pause, XCircle, Loader2, Search } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -26,8 +26,11 @@ import {
   type Agent,
   type CreateAgentPayload,
 } from '@/lib/api'
+import { Pagination } from '@/components/ui/pagination'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
+
+const AGENTS_PAGE_SIZE = 20
 
 function cronToLabel(cron: string | undefined): string {
   if (!cron) return 'Manual'
@@ -114,14 +117,26 @@ function AgentsSkeleton() {
   )
 }
 
-function AgentsEmpty() {
+function AgentsEmpty({ filtered }: { filtered?: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
-      <Bot className="h-10 w-10 text-muted-foreground" />
-      <p className="text-sm font-medium">No agents yet</p>
-      <p className="text-xs text-muted-foreground">
-        Create an agent to get started with orchestration.
-      </p>
+      {filtered ? (
+        <>
+          <Search className="h-10 w-10 text-muted-foreground" />
+          <p className="text-sm font-medium">No matching agents</p>
+          <p className="text-xs text-muted-foreground">
+            Try adjusting your search or filter criteria.
+          </p>
+        </>
+      ) : (
+        <>
+          <Bot className="h-10 w-10 text-muted-foreground" />
+          <p className="text-sm font-medium">No agents yet</p>
+          <p className="text-xs text-muted-foreground">
+            Create an agent to get started with orchestration.
+          </p>
+        </>
+      )}
     </div>
   )
 }
@@ -472,13 +487,36 @@ export function AgentsPage() {
   const companyId = useCompanyId()
   const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [adapterFilter, setAdapterFilter] = useState('')
+  const [page, setPage] = useState(0)
 
-  const { data: agents, isLoading, error } = useQuery<Agent[]>({
-    queryKey: ['agents', companyId],
-    queryFn: () => fetchAgents(companyId!),
+  const { data: rawAgents, isLoading, error } = useQuery<Agent[]>({
+    queryKey: ['agents', companyId, page],
+    queryFn: () =>
+      fetchAgents(companyId!, {
+        limit: AGENTS_PAGE_SIZE + 1,
+        offset: page * AGENTS_PAGE_SIZE,
+      }),
     enabled: !!companyId,
     refetchInterval: 10_000,
   })
+
+  const hasMore = (rawAgents?.length ?? 0) > AGENTS_PAGE_SIZE
+  const agents = rawAgents ? rawAgents.slice(0, AGENTS_PAGE_SIZE) : undefined
+
+  const STATUS_OPTIONS = ['idle', 'active', 'paused', 'terminated'] as const
+
+  const filteredAgents = (agents ?? []).filter((a) => {
+    if (search && !a.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (statusFilter && a.status !== statusFilter) return false
+    if (adapterFilter && a.adapter_type !== adapterFilter) return false
+    return true
+  })
+
+  const hasActiveFilters = search !== '' || statusFilter !== '' || adapterFilter !== ''
+  const pageCount = agents?.length ?? 0
 
   if (isLoading) return <AgentsSkeleton />
   if (error) {
@@ -494,9 +532,9 @@ export function AgentsPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Agents</h2>
         <div className="flex items-center gap-2">
-          {agents && agents.length > 0 && (
+          {pageCount > 0 && hasActiveFilters && (
             <span className="text-sm text-muted-foreground">
-              {agents.length} agent{agents.length !== 1 ? 's' : ''}
+              Showing {filteredAgents.length} of {pageCount} on this page
             </span>
           )}
           <Button size="sm" onClick={() => setShowCreate(true)} disabled={!companyId}>
@@ -513,8 +551,53 @@ export function AgentsPage() {
         />
       )}
 
-      {!agents || agents.length === 0 ? (
+      {pageCount > 0 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search agents by name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+              aria-label="Search agents by name"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full sm:w-[150px]"
+              aria-label="Filter by status"
+            >
+              <option value="">All Statuses</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={adapterFilter}
+              onChange={(e) => setAdapterFilter(e.target.value)}
+              className="w-full sm:w-[150px]"
+              aria-label="Filter by adapter"
+            >
+              <option value="">All Adapters</option>
+              {ADAPTER_TYPES.map((a) => (
+                <option key={a} value={a}>
+                  {a.charAt(0).toUpperCase() + a.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      )}
+
+      {pageCount === 0 && page === 0 ? (
         <AgentsEmpty />
+      ) : filteredAgents.length === 0 ? (
+        <AgentsEmpty filtered />
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -533,7 +616,7 @@ export function AgentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {agents.map((agent) => (
+                {filteredAgents.map((agent) => (
                   <TableRow
                     key={agent.id}
                     className="cursor-pointer"
@@ -592,6 +675,13 @@ export function AgentsPage() {
                 ))}
               </TableBody>
             </Table>
+            <Pagination
+              page={page}
+              pageSize={AGENTS_PAGE_SIZE}
+              total={-1}
+              hasMore={hasMore}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
       )}
