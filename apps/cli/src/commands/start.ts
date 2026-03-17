@@ -92,6 +92,16 @@ export async function startCommand(options: { port: number }): Promise<void> {
   `)
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+
+  // Graceful shutdown on Ctrl+C
+  const shutdown = () => {
+    console.log('\n  Shutting down ShackleAI Orchestrator...')
+    scheduler.stop()
+    db.close().catch(() => {})
+    process.exit(0)
+  }
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
 }
 
 /** Check if a port is available by trying to listen on it */
