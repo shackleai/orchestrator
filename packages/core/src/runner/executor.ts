@@ -250,6 +250,16 @@ export class HeartbeatExecutor {
         await saveSessionState(runId, adapterResult.sessionState, this.db)
       }
 
+      // ── Step 9b: Record tool calls ─────────────────────────────────
+      if (adapterResult.toolCalls && adapterResult.toolCalls.length > 0) {
+        await this.recordToolCalls(
+          runId,
+          agentId,
+          companyId,
+          adapterResult.toolCalls,
+        )
+      }
+
       // ── Step 10: Update heartbeat_run ───────────────────────────────
       await this.db.query(
         `UPDATE heartbeat_runs
@@ -312,6 +322,38 @@ export class HeartbeatExecutor {
   }
 
   // ── Private helpers ──────────────────────────────────────────────────
+
+  /**
+   * Insert tool call records for a heartbeat run.
+   * Best-effort — failures here should not fail the heartbeat.
+   */
+  private async recordToolCalls(
+    runId: string,
+    agentId: string,
+    companyId: string,
+    toolCalls: NonNullable<AdapterResult['toolCalls']>,
+  ): Promise<void> {
+    try {
+      for (const tc of toolCalls) {
+        await this.db.query(
+          `INSERT INTO tool_calls (heartbeat_run_id, agent_id, company_id, tool_name, tool_input, tool_output, duration_ms, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            runId,
+            agentId,
+            companyId,
+            tc.toolName,
+            tc.toolInput ? JSON.stringify(tc.toolInput) : null,
+            tc.toolOutput ?? null,
+            tc.durationMs ?? null,
+            tc.status ?? 'success',
+          ],
+        )
+      }
+    } catch {
+      // Best-effort — don't let tool call logging fail the heartbeat
+    }
+  }
 
   private async markRunFailed(runId: string, error: string): Promise<void> {
     try {
