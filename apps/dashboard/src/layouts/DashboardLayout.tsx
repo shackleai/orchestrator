@@ -4,8 +4,10 @@ import {
   LayoutDashboard,
   Bot,
   ListTodo,
+  LayoutGrid,
   Activity,
   DollarSign,
+  Network,
   Settings,
   Menu,
   X,
@@ -14,11 +16,14 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { UpgradeBanner } from '@/components/UpgradeBanner'
 import { LicenseStatus } from '@/components/LicenseStatus'
+import { CompanySelector } from '@/components/CompanySelector'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
   { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/org-chart', icon: Network, label: 'Org Chart' },
   { to: '/tasks', icon: ListTodo, label: 'Tasks' },
+  { to: '/board', icon: LayoutGrid, label: 'Board' },
   { to: '/activity', icon: Activity, label: 'Activity' },
   { to: '/costs', icon: DollarSign, label: 'Costs' },
   { to: '/settings', icon: Settings, label: 'Settings' },
@@ -64,6 +69,11 @@ export function DashboardLayout() {
           >
             <X className="h-4 w-4" />
           </Button>
+        </div>
+
+        {/* Company selector */}
+        <div className="border-b border-border px-3 py-2">
+          <CompanySelector />
         </div>
 
         {/* Nav */}
