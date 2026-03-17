@@ -47,6 +47,9 @@ export const TriggerType = {
   Manual: 'manual',
   Event: 'event',
   Api: 'api',
+  TaskAssigned: 'task_assigned',
+  Mentioned: 'mentioned',
+  Delegated: 'delegated',
 } as const
 export type TriggerType = (typeof TriggerType)[keyof typeof TriggerType]
 

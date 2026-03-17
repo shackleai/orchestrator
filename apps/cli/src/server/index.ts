@@ -37,7 +37,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', companiesRouter(db))
   app.route('/api/companies', dashboardRouter(db))
   app.route('/api/companies', agentsRouter(db, options?.scheduler))
-  app.route('/api/companies', issuesRouter(db))
+  app.route('/api/companies', issuesRouter(db, options?.scheduler))
   app.route('/api/companies', policiesRouter(db))
   app.route('/api/companies', costsRouter(db))
   app.route('/api/companies', heartbeatsRouter(db))
