@@ -268,6 +268,25 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ error: 'Agent not found' }, 404)
     }
 
+    // Pre-flight: check if required LLM key is configured for this adapter type
+    const agent = agentResult.rows[0]
+    const adapterType = agent.adapter_type
+    const needsOpenAI = ['crewai', 'openclaw'].includes(adapterType)
+    const needsAnthropic = adapterType === 'claude'
+
+    if (needsOpenAI && !process.env.OPENAI_API_KEY) {
+      return c.json({
+        error: 'OpenAI API key not configured. Go to Settings → LLM API Keys and add your OpenAI key, then restart the server.',
+        code: 'MISSING_LLM_KEY',
+      }, 400)
+    }
+    if (needsAnthropic && !process.env.ANTHROPIC_API_KEY) {
+      return c.json({
+        error: 'Anthropic API key not configured. Go to Settings → LLM API Keys and add your Anthropic key, then restart the server.',
+        code: 'MISSING_LLM_KEY',
+      }, 400)
+    }
+
     // If no scheduler is available, fall back to just updating the timestamp
     if (!scheduler) {
       const updated = await db.query<Agent>(

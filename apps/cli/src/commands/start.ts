@@ -40,6 +40,14 @@ export async function startCommand(options: { port: number }): Promise<void> {
     }
   }
 
+  // Inject LLM keys into process env so agent child processes inherit them
+  if (config.llmKeys?.openai) {
+    process.env.OPENAI_API_KEY = config.llmKeys.openai
+  }
+  if (config.llmKeys?.anthropic) {
+    process.env.ANTHROPIC_API_KEY = config.llmKeys.anthropic
+  }
+
   // Initialize DB
   let db: DatabaseProvider
   if (config.mode === 'local') {

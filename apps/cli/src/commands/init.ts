@@ -4,7 +4,6 @@
 
 import * as p from '@clack/prompts'
 import { PGliteProvider, PgProvider, runMigrations } from '@shackleai/db'
-import { AdapterType } from '@shackleai/shared'
 import type { DatabaseProvider } from '@shackleai/db'
 import { readConfig, writeConfig } from '../config.js'
 import { VERSION } from '../index.js'
@@ -144,74 +143,6 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
     process.exit(1)
   }
   spin.stop('Company created')
-
-  // Optionally create first agent
-  const createAgent = await p.confirm({
-    message: 'Create your first agent?',
-    initialValue: true,
-  })
-
-  if (p.isCancel(createAgent)) {
-    p.cancel('Setup cancelled.')
-    await db.close()
-    process.exit(0)
-  }
-
-  if (createAgent) {
-    const agentName = await p.text({
-      message: 'Agent name',
-      placeholder: 'coder-bot',
-      validate: (v) => {
-        if (!v.trim()) return 'Agent name is required'
-        return undefined
-      },
-    })
-
-    if (p.isCancel(agentName)) {
-      p.cancel('Setup cancelled.')
-      await db.close()
-      process.exit(0)
-    }
-
-    const agentRole = await p.text({
-      message: 'Agent role',
-      placeholder: 'engineer',
-      validate: (v) => {
-        if (!v.trim()) return 'Agent role is required'
-        return undefined
-      },
-    })
-
-    if (p.isCancel(agentRole)) {
-      p.cancel('Setup cancelled.')
-      await db.close()
-      process.exit(0)
-    }
-
-    const adapterOptions = Object.entries(AdapterType).map(([key, value]) => ({
-      value,
-      label: key,
-    }))
-
-    const adapterType = await p.select({
-      message: 'Adapter type',
-      options: adapterOptions,
-    })
-
-    if (p.isCancel(adapterType)) {
-      p.cancel('Setup cancelled.')
-      await db.close()
-      process.exit(0)
-    }
-
-    spin.start('Creating agent...')
-    await db.query(
-      `INSERT INTO agents (company_id, name, role, adapter_type)
-       VALUES ($1, $2, $3, $4)`,
-      [companyId, agentName.trim(), agentRole.trim(), adapterType],
-    )
-    spin.stop('Agent created')
-  }
 
   // Save config
   await writeConfig({

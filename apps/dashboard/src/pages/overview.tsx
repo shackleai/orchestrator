@@ -98,6 +98,7 @@ export function OverviewPage() {
     queryKey: ['dashboard', companyId],
     queryFn: () => fetchDashboard(companyId!),
     enabled: !!companyId,
+    refetchInterval: 15_000,
   })
 
   if (isLoading) return <OverviewSkeleton />

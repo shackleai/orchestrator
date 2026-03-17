@@ -53,6 +53,8 @@ export interface AdapterResult {
   stdout: string
   stderr: string
   sessionState?: string | null
+  /** Agent-reported task status: 'done', 'in_review', 'in_progress', or null (no change). */
+  taskStatus?: 'done' | 'in_review' | 'in_progress' | null
   usage?: {
     inputTokens: number
     outputTokens: number

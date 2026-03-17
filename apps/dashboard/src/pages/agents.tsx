@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { Bot } from 'lucide-react'
+import { Bot, Plus, Play, Pause, XCircle, Loader2 } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -11,9 +12,40 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { fetchAgents, type Agent } from '@/lib/api'
+import {
+  fetchAgents,
+  createAgent,
+  wakeupAgent,
+  pauseAgent,
+  resumeAgent,
+  terminateAgent,
+  type Agent,
+  type CreateAgentPayload,
+} from '@/lib/api'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
+
+function cronToLabel(cron: string | undefined): string {
+  if (!cron) return 'Manual'
+  if (cron === '*/1 * * * *') return 'Every 1m'
+  if (cron === '*/5 * * * *') return 'Every 5m'
+  if (cron === '*/15 * * * *') return 'Every 15m'
+  if (cron === '*/30 * * * *') return 'Every 30m'
+  if (cron === '0 * * * *') return 'Hourly'
+  return cron
+}
+
+const SCHEDULE_OPTIONS = [
+  { value: '', label: 'Manual only' },
+  { value: '*/5 * * * *', label: 'Every 5 minutes' },
+  { value: '*/15 * * * *', label: 'Every 15 minutes' },
+  { value: '*/30 * * * *', label: 'Every 30 minutes' },
+  { value: '0 * * * *', label: 'Every hour' },
+] as const
 
 const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'secondary' | 'info'> = {
   active: 'success',
@@ -21,6 +53,28 @@ const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'sec
   paused: 'warning',
   error: 'destructive',
   terminated: 'destructive',
+}
+
+const ROLES = ['worker', 'manager', 'ceo'] as const
+const ADAPTER_TYPES = ['process', 'http', 'claude', 'mcp', 'openclaw', 'crewai'] as const
+
+const ADAPTERS_WITH_ENTRYPOINT = new Set<string>(['process', 'http', 'claude', 'mcp', 'openclaw', 'crewai'])
+
+function buildAdapterConfig(adapterType: string, entrypoint: string, timeout: number): Record<string, unknown> {
+  switch (adapterType) {
+    case 'process':
+      return { command: entrypoint, args: [], timeout }
+    case 'http':
+      return { url: entrypoint, timeout }
+    case 'claude':
+      return { prompt: entrypoint, model: 'claude-sonnet-4-20250514', timeout }
+    case 'mcp':
+      return { url: entrypoint, toolName: 'run', timeout }
+    case 'crewai':
+    case 'openclaw':
+    default:
+      return { entrypoint, timeout }
+  }
 }
 
 function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
@@ -72,13 +126,358 @@ function AgentsEmpty() {
   )
 }
 
+function CreateAgentForm({
+  companyId,
+  onClose,
+}: {
+  companyId: string
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [name, setName] = useState('')
+  const [title, setTitle] = useState('')
+  const [role, setRole] = useState<string>('worker')
+  const [adapterType, setAdapterType] = useState<string>('process')
+  const [entrypoint, setEntrypoint] = useState('')
+  const [timeout, setTimeout] = useState(120)
+  const [budget, setBudget] = useState(500)
+  const [schedule, setSchedule] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: (payload: CreateAgentPayload) => createAgent(companyId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast('Agent hired successfully', 'success')
+      onClose()
+    },
+    onError: (err: Error) => {
+      toast(`Failed to create agent: ${err.message}`, 'error')
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+
+    const adapterConfig = {
+      ...buildAdapterConfig(adapterType, entrypoint, timeout),
+      ...(schedule ? { cron: schedule } : {}),
+    }
+
+    mutation.mutate({
+      name: name.trim(),
+      title: title.trim() || undefined,
+      role,
+      adapter_type: adapterType,
+      adapter_config: adapterConfig,
+      budget_monthly_cents: Math.round(budget * 100),
+    })
+  }
+
+  const entrypointPlaceholder: Record<string, string> = {
+    process: 'Path to .py file or command',
+    http: 'https://agent.example.com/run',
+    claude: 'System prompt for Claude agent',
+    mcp: 'https://mcp-server.example.com',
+    openclaw: 'Path to .py file or command',
+    crewai: 'Path to .py file or command',
+  }
+
+  return (
+    <Card className="border-primary/30">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="agent-name" className="text-sm font-medium">
+                Name <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="agent-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. code-reviewer"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="agent-title" className="text-sm font-medium">
+                Title
+              </label>
+              <Input
+                id="agent-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Senior Code Reviewer"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="agent-role" className="text-sm font-medium">
+                Role
+              </label>
+              <Select
+                id="agent-role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="agent-adapter" className="text-sm font-medium">
+                Adapter Type
+              </label>
+              <Select
+                id="agent-adapter"
+                value={adapterType}
+                onChange={(e) => setAdapterType(e.target.value)}
+              >
+                {ADAPTER_TYPES.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {ADAPTERS_WITH_ENTRYPOINT.has(adapterType) && (
+            <div className="space-y-1.5">
+              <label htmlFor="agent-entrypoint" className="text-sm font-medium">
+                Entrypoint
+              </label>
+              <Input
+                id="agent-entrypoint"
+                value={entrypoint}
+                onChange={(e) => setEntrypoint(e.target.value)}
+                placeholder={entrypointPlaceholder[adapterType] ?? 'Path to .py file or command'}
+              />
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="agent-timeout" className="text-sm font-medium">
+                Timeout (seconds)
+              </label>
+              <Input
+                id="agent-timeout"
+                type="number"
+                min={1}
+                value={timeout}
+                onChange={(e) => setTimeout(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="agent-budget" className="text-sm font-medium">
+                Monthly Budget ($)
+              </label>
+              <Input
+                id="agent-budget"
+                type="number"
+                min={0}
+                step={1}
+                value={budget}
+                onChange={(e) => setBudget(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="agent-schedule" className="text-sm font-medium">
+              Schedule
+            </label>
+            <Select
+              id="agent-schedule"
+              value={schedule}
+              onChange={(e) => setSchedule(e.target.value)}
+            >
+              {SCHEDULE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Automatically trigger heartbeats on a cron schedule.
+            </p>
+          </div>
+
+          {mutation.isError && (
+            <p className="text-sm text-destructive">
+              {(mutation.error as Error).message}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 pt-2">
+            <Button type="submit" disabled={mutation.isPending || !name.trim()}>
+              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mutation.isPending ? 'Creating...' : 'Create Agent'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RunButton({ companyId, agentId }: { companyId: string; agentId: string }) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const mutation = useMutation({
+    mutationFn: () => wakeupAgent(companyId, agentId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['heartbeats', companyId, agentId] })
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast(`Heartbeat triggered (exit: ${data?.exit_code ?? 'n/a'})`, 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Heartbeat failed: ${err.message}`, 'error')
+    },
+  })
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={(e) => {
+        e.stopPropagation()
+        mutation.mutate()
+      }}
+      disabled={mutation.isPending}
+      aria-label="Run heartbeat"
+      title={
+        mutation.isSuccess
+          ? `Triggered: exit code ${mutation.data?.exit_code ?? 'n/a'}`
+          : mutation.isError
+            ? (mutation.error as Error).message
+            : 'Run heartbeat'
+      }
+    >
+      {mutation.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : mutation.isSuccess ? (
+        <Badge variant="success" className="text-[10px] px-1.5 py-0">
+          done
+        </Badge>
+      ) : (
+        <Play className="h-3.5 w-3.5" />
+      )}
+    </Button>
+  )
+}
+
+function AgentActions({ companyId, agent }: { companyId: string; agent: Agent }) {
+  const queryClient = useQueryClient()
+
+  const pause = useMutation({
+    mutationFn: () => pauseAgent(companyId, agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+    },
+  })
+
+  const resume = useMutation({
+    mutationFn: () => resumeAgent(companyId, agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+    },
+  })
+
+  const terminate = useMutation({
+    mutationFn: () => terminateAgent(companyId, agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+    },
+  })
+
+  if (agent.status === 'terminated') return null
+
+  const isPending = pause.isPending || resume.isPending || terminate.isPending
+
+  return (
+    <div className="flex items-center gap-1">
+      {agent.status === 'paused' ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            resume.mutate()
+          }}
+          disabled={isPending}
+          aria-label="Resume agent"
+          title="Resume agent"
+        >
+          {resume.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Play className="h-3.5 w-3.5 text-emerald-500" />
+          )}
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            pause.mutate()
+          }}
+          disabled={isPending}
+          aria-label="Pause agent"
+          title="Pause agent"
+        >
+          {pause.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Pause className="h-3.5 w-3.5 text-amber-500" />
+          )}
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (window.confirm('Terminate agent? This cannot be undone.')) {
+            terminate.mutate()
+          }
+        }}
+        disabled={isPending}
+        aria-label="Terminate agent"
+        title="Terminate agent"
+      >
+        {terminate.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <XCircle className="h-3.5 w-3.5 text-red-500" />
+        )}
+      </Button>
+    </div>
+  )
+}
+
 export function AgentsPage() {
   const companyId = useCompanyId()
   const navigate = useNavigate()
+  const [showCreate, setShowCreate] = useState(false)
+
   const { data: agents, isLoading, error } = useQuery<Agent[]>({
     queryKey: ['agents', companyId],
     queryFn: () => fetchAgents(companyId!),
     enabled: !!companyId,
+    refetchInterval: 10_000,
   })
 
   if (isLoading) return <AgentsSkeleton />
@@ -90,74 +489,112 @@ export function AgentsPage() {
     )
   }
 
-  if (!agents || agents.length === 0) return <AgentsEmpty />
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Agents</h2>
-        <span className="text-sm text-muted-foreground">
-          {agents.length} agent{agents.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-2">
+          {agents && agents.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              {agents.length} agent{agents.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          <Button size="sm" onClick={() => setShowCreate(true)} disabled={!companyId}>
+            <Plus className="h-4 w-4" />
+            Hire Agent
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="hidden md:table-cell">Role</TableHead>
-                <TableHead className="hidden lg:table-cell">Adapter</TableHead>
-                <TableHead className="hidden sm:table-cell">Budget</TableHead>
-                <TableHead className="hidden md:table-cell">Last Heartbeat</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {agents.map((agent) => (
-                <TableRow
-                  key={agent.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/agents/${agent.id}`)}
-                  role="link"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') navigate(`/agents/${agent.id}`)
-                  }}
-                >
-                  <TableCell className="font-medium">{agent.name}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={statusVariant[agent.status] ?? 'secondary'}
-                      className="capitalize"
-                    >
-                      {agent.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-muted-foreground">
-                    {agent.role}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <Badge variant="outline" className="capitalize font-mono text-xs">
-                      {agent.adapter_type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <BudgetBar
-                      spent={agent.spent_monthly_cents}
-                      budget={agent.budget_monthly_cents}
-                    />
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                    {formatRelativeTime(agent.last_heartbeat_at)}
-                  </TableCell>
+      {showCreate && companyId && (
+        <CreateAgentForm
+          companyId={companyId}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
+
+      {!agents || agents.length === 0 ? (
+        <AgentsEmpty />
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Role</TableHead>
+                  <TableHead className="hidden lg:table-cell">Adapter</TableHead>
+                  <TableHead className="hidden sm:table-cell">Budget</TableHead>
+                  <TableHead className="hidden lg:table-cell">Schedule</TableHead>
+                  <TableHead className="hidden md:table-cell">Last Heartbeat</TableHead>
+                  <TableHead className="w-[60px]">Run</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {agents.map((agent) => (
+                  <TableRow
+                    key={agent.id}
+                    className="cursor-pointer"
+                    onClick={() => navigate(`/agents/${agent.id}`)}
+                    role="link"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') navigate(`/agents/${agent.id}`)
+                    }}
+                  >
+                    <TableCell className="font-medium">{agent.name}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={statusVariant[agent.status] ?? 'secondary'}
+                        className="capitalize"
+                      >
+                        {agent.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
+                      {agent.role}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <Badge variant="outline" className="capitalize font-mono text-xs">
+                        {agent.adapter_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <BudgetBar
+                        spent={agent.spent_monthly_cents}
+                        budget={agent.budget_monthly_cents}
+                      />
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <Badge
+                        variant={agent.adapter_config?.cron ? 'info' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {cronToLabel(agent.adapter_config?.cron as string | undefined)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                      {formatRelativeTime(agent.last_heartbeat_at)}
+                    </TableCell>
+                    <TableCell>
+                      {companyId && (
+                        <RunButton companyId={companyId} agentId={agent.id} />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {companyId && (
+                        <AgentActions companyId={companyId} agent={agent} />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

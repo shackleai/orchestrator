@@ -9,6 +9,7 @@ import { CreateCompanyInput, UpdateCompanyInput } from '@shackleai/shared'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 import { parsePagination } from '../pagination.js'
+import { readConfig, writeConfig } from '../../config.js'
 
 type Variables = CompanyScopeVariables
 
@@ -95,6 +96,58 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
     )
 
     return c.json({ data: result.rows[0] })
+  })
+
+  // GET /api/companies/:id/llm-keys — returns redacted LLM API keys
+  app.get('/:id/llm-keys', async (c) => {
+    const config = await readConfig()
+    const keys = config?.llmKeys ?? {}
+    return c.json({
+      data: {
+        openai: keys.openai ? '••••' + keys.openai.slice(-4) : null,
+        anthropic: keys.anthropic ? '••••' + keys.anthropic.slice(-4) : null,
+      },
+    })
+  })
+
+  // PUT /api/companies/:id/llm-keys — save LLM API keys to config
+  app.put('/:id/llm-keys', async (c) => {
+    let body: Record<string, unknown>
+    try {
+      body = (await c.req.json()) as Record<string, unknown>
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
+
+    const config = await readConfig()
+    if (!config) {
+      return c.json({ error: 'No config found' }, 500)
+    }
+
+    const llmKeys = config.llmKeys ?? {}
+    if (body.openai !== undefined) llmKeys.openai = (body.openai as string) || undefined
+    if (body.anthropic !== undefined) llmKeys.anthropic = (body.anthropic as string) || undefined
+
+    await writeConfig({ ...config, llmKeys })
+
+    // Also update process env so running agents pick up changes immediately
+    if (llmKeys.openai) {
+      process.env.OPENAI_API_KEY = llmKeys.openai
+    } else {
+      delete process.env.OPENAI_API_KEY
+    }
+    if (llmKeys.anthropic) {
+      process.env.ANTHROPIC_API_KEY = llmKeys.anthropic
+    } else {
+      delete process.env.ANTHROPIC_API_KEY
+    }
+
+    return c.json({
+      data: {
+        openai: llmKeys.openai ? '••••' + llmKeys.openai.slice(-4) : null,
+        anthropic: llmKeys.anthropic ? '••••' + llmKeys.anthropic.slice(-4) : null,
+      },
+    })
   })
 
   return app

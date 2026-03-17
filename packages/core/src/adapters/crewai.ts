@@ -240,8 +240,9 @@ export class CrewAIAdapter implements AdapterModule {
           stdout = `[ShackleAI] WARNING: stdout exceeded ${MAX_STDOUT_BYTES} bytes — output was truncated\n${stdout}`
         }
 
-        // Parse session state from result block if present
+        // Parse session state and task status from result block if present
         let sessionState: string | null = null
+        let taskStatus: 'done' | 'in_review' | 'in_progress' | null = null
         const sessionBlocks = extractResultBlocks(rawStdout)
         if (sessionBlocks.length > 0) {
           const lastBlock = sessionBlocks[sessionBlocks.length - 1]
@@ -253,8 +254,12 @@ export class CrewAIAdapter implements AdapterModule {
             if (typeof parsed.sessionState === 'string') {
               sessionState = parsed.sessionState
             }
+            if (typeof parsed.taskStatus === 'string' &&
+                ['done', 'in_review', 'in_progress'].includes(parsed.taskStatus)) {
+              taskStatus = parsed.taskStatus as 'done' | 'in_review' | 'in_progress'
+            }
           } catch {
-            // Ignore parse errors for session state
+            // Ignore parse errors
           }
         }
 
@@ -265,6 +270,7 @@ export class CrewAIAdapter implements AdapterModule {
             ? `Process killed after ${timeoutMs}ms timeout\n${stderr}`
             : stderr,
           sessionState,
+          taskStatus,
           usage,
         })
       })

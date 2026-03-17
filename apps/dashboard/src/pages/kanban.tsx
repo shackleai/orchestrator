@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
 import { LayoutGrid } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -60,16 +61,18 @@ function KanbanEmpty() {
 function KanbanCard({
   task,
   agentMap,
+  onClick,
 }: {
   task: Issue
   agentMap: Map<string, string>
+  onClick: () => void
 }) {
   const assigneeName = task.assignee_agent_id
     ? agentMap.get(task.assignee_agent_id) ?? task.assignee_agent_id.slice(0, 8)
     : null
 
   return (
-    <Card className="transition-colors hover:border-amber/40">
+    <Card className="cursor-pointer transition-colors hover:border-amber/40" onClick={onClick}>
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <span className="font-mono text-[10px] text-muted-foreground">
@@ -97,6 +100,7 @@ function KanbanCard({
 
 export function KanbanPage() {
   const companyId = useCompanyId()
+  const navigate = useNavigate()
 
   const {
     data: tasks,
@@ -182,6 +186,7 @@ export function KanbanPage() {
                       key={task.id}
                       task={task}
                       agentMap={agentMap}
+                      onClick={() => navigate(`/tasks/${task.id}`)}
                     />
                   ))
                 )}

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { ListTodo } from 'lucide-react'
+import { ListTodo, Plus, Loader2 } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -11,10 +12,20 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { fetchTasks, type Issue } from '@/lib/api'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  fetchTasks,
+  fetchAgents,
+  createTask,
+  type Issue,
+  type Agent,
+  type CreateTaskPayload,
+} from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
 
 const statusOptions = [
   { value: '', label: 'All statuses' },
@@ -80,10 +91,144 @@ function TasksEmpty() {
   )
 }
 
+function CreateTaskForm({
+  companyId,
+  onClose,
+}: {
+  companyId: string
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [priority, setPriority] = useState('medium')
+  const [assigneeAgentId, setAssigneeAgentId] = useState('')
+
+  const { data: agents } = useQuery<Agent[]>({
+    queryKey: ['agents', companyId],
+    queryFn: () => fetchAgents(companyId),
+    enabled: !!companyId,
+  })
+
+  const mutation = useMutation({
+    mutationFn: (payload: CreateTaskPayload) => createTask(companyId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', companyId] })
+      toast('Task created', 'success')
+      onClose()
+    },
+    onError: (err: Error) => {
+      toast(`Failed to create task: ${err.message}`, 'error')
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) return
+
+    mutation.mutate({
+      title: title.trim(),
+      description: description.trim() || undefined,
+      priority,
+      assignee_agent_id: assigneeAgentId || null,
+      status: 'todo',
+    })
+  }
+
+  return (
+    <Card className="border-primary/30">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="task-title" className="text-sm font-medium">
+              Title <span className="text-destructive">*</span>
+            </label>
+            <Input
+              id="task-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Implement user authentication"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="task-description" className="text-sm font-medium">
+              Description
+            </label>
+            <textarea
+              id="task-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe the task..."
+              rows={3}
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="task-priority" className="text-sm font-medium">
+                Priority
+              </label>
+              <Select
+                id="task-priority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="task-assignee" className="text-sm font-medium">
+                Assign to
+              </label>
+              <Select
+                id="task-assignee"
+                value={assigneeAgentId}
+                onChange={(e) => setAssigneeAgentId(e.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {agents?.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {mutation.isError && (
+            <p className="text-sm text-destructive">
+              {(mutation.error as Error).message}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 pt-2">
+            <Button type="submit" disabled={mutation.isPending || !title.trim()}>
+              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mutation.isPending ? 'Creating...' : 'Create Task'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function TasksPage() {
   const companyId = useCompanyId()
+  const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
 
   const { data: tasks, isLoading, error } = useQuery<Issue[]>({
     queryKey: ['tasks', companyId, statusFilter, priorityFilter],
@@ -99,7 +244,7 @@ export function TasksPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold">Tasks</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -124,8 +269,19 @@ export function TasksPage() {
               </option>
             ))}
           </Select>
+          <Button size="sm" onClick={() => setShowCreate(true)} disabled={!companyId}>
+            <Plus className="h-4 w-4" />
+            Create Task
+          </Button>
         </div>
       </div>
+
+      {showCreate && companyId && (
+        <CreateTaskForm
+          companyId={companyId}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
 
       {isLoading ? (
         <TasksSkeleton />
@@ -151,7 +307,7 @@ export function TasksPage() {
               </TableHeader>
               <TableBody>
                 {tasks.map((task) => (
-                  <TableRow key={task.id}>
+                  <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/tasks/${task.id}`)}>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {task.identifier}
                     </TableCell>

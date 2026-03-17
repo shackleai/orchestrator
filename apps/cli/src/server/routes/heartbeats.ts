@@ -31,6 +31,18 @@ export function heartbeatsRouter(db: DatabaseProvider): Hono<{ Variables: Variab
     return c.json({ data: result.rows })
   })
 
+  // GET /api/companies/:id/agents/:agentId/heartbeats — heartbeats for a specific agent
+  app.get('/:id/agents/:agentId/heartbeats', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const agentId = c.req.param('agentId')
+    const { limit, offset } = parsePagination(c)
+    const result = await db.query<HeartbeatRun>(
+      `SELECT * FROM heartbeat_runs WHERE company_id = $1 AND agent_id = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+      [companyId, agentId, limit, offset],
+    )
+    return c.json({ data: result.rows })
+  })
+
   // GET /api/companies/:id/heartbeats/:runId — detail of a single heartbeat run
   app.get('/:id/heartbeats/:runId', companyScope, async (c) => {
     const companyId = c.req.param('id')

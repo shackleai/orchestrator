@@ -61,7 +61,9 @@ export interface HeartbeatRun {
   started_at: string | null
   finished_at: string | null
   exit_code: number | null
+  stdout_excerpt: string | null
   error: string | null
+  usage_json: string | null
   created_at: string
 }
 
@@ -84,6 +86,16 @@ export interface DashboardData {
   completedTasks: number
   totalSpendCents: number
   recentActivity: ActivityLogEntry[]
+}
+
+export interface Comment {
+  id: string
+  issue_id: string
+  body: string
+  author_agent_id: string | null
+  parent_id: string | null
+  resolved: boolean
+  created_at: string
 }
 
 // --- Fetchers ---
@@ -220,4 +232,152 @@ export async function fetchLicense(
     // 404 means no license — treat as free tier
     return null
   }
+}
+
+// --- LLM Keys ---
+
+export interface LlmKeysData {
+  openai: string | null
+  anthropic: string | null
+}
+
+export function fetchLlmKeys(companyId: string) {
+  return fetchJson<LlmKeysData>(`${BASE_URL}/companies/${companyId}/llm-keys`)
+}
+
+export async function saveLlmKeys(
+  companyId: string,
+  keys: { openai?: string; anthropic?: string },
+): Promise<LlmKeysData> {
+  const res = await fetch(`${BASE_URL}/companies/${companyId}/llm-keys`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(keys),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return ((await res.json()) as ApiResponse<LlmKeysData>).data
+}
+
+// --- Mutation helpers ---
+
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    try {
+      const errJson = JSON.parse(text) as { error?: string }
+      if (errJson.error) throw new Error(errJson.error)
+    } catch (e) {
+      if (e instanceof Error && !e.message.startsWith('API error')) throw e
+    }
+    throw new Error(`API error: ${res.status} ${text}`)
+  }
+  const json = (await res.json()) as ApiResponse<T>
+  return json.data
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    try {
+      const errJson = JSON.parse(text) as { error?: string }
+      if (errJson.error) throw new Error(errJson.error)
+    } catch (e) {
+      if (e instanceof Error && !e.message.startsWith('API error')) throw e
+    }
+    throw new Error(`API error: ${res.status} ${text}`)
+  }
+  const json = (await res.json()) as ApiResponse<T>
+  return json.data
+}
+
+export interface CreateAgentPayload {
+  name: string
+  title?: string
+  role: string
+  adapter_type: string
+  adapter_config: Record<string, unknown>
+  budget_monthly_cents: number
+}
+
+export function createAgent(companyId: string, payload: CreateAgentPayload) {
+  return postJson<Agent>(
+    `${BASE_URL}/companies/${companyId}/agents`,
+    payload,
+  )
+}
+
+export interface CreateTaskPayload {
+  title: string
+  description?: string
+  priority: string
+  assignee_agent_id?: string | null
+  status: string
+}
+
+export function createTask(companyId: string, payload: CreateTaskPayload) {
+  return postJson<Issue>(
+    `${BASE_URL}/companies/${companyId}/issues`,
+    payload,
+  )
+}
+
+export interface WakeupResult {
+  triggered: boolean
+  exit_code: number | null
+}
+
+export function wakeupAgent(companyId: string, agentId: string) {
+  return postJson<WakeupResult>(
+    `${BASE_URL}/companies/${companyId}/agents/${agentId}/wakeup`,
+    {},
+  )
+}
+
+export function updateAgent(
+  companyId: string,
+  agentId: string,
+  data: Partial<{ adapter_config: Record<string, unknown> }>,
+) {
+  return patchJson<Agent>(
+    `${BASE_URL}/companies/${companyId}/agents/${agentId}`,
+    data,
+  )
+}
+
+export function pauseAgent(companyId: string, agentId: string) {
+  return postJson<Agent>(`${BASE_URL}/companies/${companyId}/agents/${agentId}/pause`, {})
+}
+
+export function resumeAgent(companyId: string, agentId: string) {
+  return postJson<Agent>(`${BASE_URL}/companies/${companyId}/agents/${agentId}/resume`, {})
+}
+
+export function terminateAgent(companyId: string, agentId: string) {
+  return postJson<Agent>(`${BASE_URL}/companies/${companyId}/agents/${agentId}/terminate`, {})
+}
+
+export function fetchIssue(companyId: string, issueId: string) {
+  return fetchJson<Issue>(`${BASE_URL}/companies/${companyId}/issues/${issueId}`)
+}
+
+export function fetchComments(companyId: string, issueId: string) {
+  return fetchJson<Comment[]>(`${BASE_URL}/companies/${companyId}/issues/${issueId}/comments`)
+}
+
+export function createComment(companyId: string, issueId: string, body: string) {
+  return postJson<Comment>(`${BASE_URL}/companies/${companyId}/issues/${issueId}/comments`, { body })
+}
+
+export function updateIssue(companyId: string, issueId: string, data: Partial<Issue>) {
+  return patchJson<Issue>(`${BASE_URL}/companies/${companyId}/issues/${issueId}`, data)
 }

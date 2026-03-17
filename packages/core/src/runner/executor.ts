@@ -172,7 +172,7 @@ export class HeartbeatExecutor {
 
       // ── Step 5: Build context ───────────────────────────────────────
       const sessionState = await getLastSessionState(agentId, this.db)
-      const task = await this.getAssignedTask(agentId)
+      const task = await this.getAssignedTask(agentId, companyId)
 
       // Build agent communication context (async awareness)
       const lastHeartbeat = agent.last_heartbeat_at ?? null
@@ -286,6 +286,27 @@ export class HeartbeatExecutor {
           companyId,
           adapterResult.toolCalls,
         )
+      }
+
+      // ── Step 9c: Update task status if agent reported one ──────────
+      if (adapterResult.taskStatus && task) {
+        try {
+          await this.db.query(
+            `UPDATE issues SET status = $1, updated_at = NOW() WHERE id = $2`,
+            [adapterResult.taskStatus, task.id],
+          )
+          this.observatory.logEvent({
+            company_id: companyId,
+            entity_type: 'issue',
+            entity_id: task.id,
+            actor_type: 'agent',
+            actor_id: agentId,
+            action: `task_${adapterResult.taskStatus}`,
+            changes: { title: task.title, newStatus: adapterResult.taskStatus },
+          })
+        } catch {
+          // Best-effort — don't fail the heartbeat for status update errors
+        }
       }
 
       // ── Step 10: Update heartbeat_run ───────────────────────────────
@@ -408,15 +429,65 @@ export class HeartbeatExecutor {
     }
   }
 
-  private async getAssignedTask(agentId: string): Promise<TaskRow | null> {
-    const result = await this.db.query<TaskRow>(
+  /**
+   * Get or checkout the next task for this agent.
+   *
+   * 1. Return an existing in_progress task (agent is already working on it).
+   * 2. If none, atomically checkout the highest-priority todo/backlog task
+   *    assigned to this agent (UPDATE ... RETURNING in a single statement).
+   * 3. Log the checkout to Observatory.
+   */
+  private async getAssignedTask(agentId: string, companyId: string): Promise<TaskRow | null> {
+    // Step 1: Check for an existing in_progress task
+    const inProgress = await this.db.query<TaskRow>(
       `SELECT id, title, description, goal_id, project_id FROM issues
        WHERE assignee_agent_id = $1 AND status = 'in_progress'
        ORDER BY created_at DESC
        LIMIT 1`,
       [agentId],
     )
-    return result.rows[0] ?? null
+    if (inProgress.rows.length > 0) {
+      return inProgress.rows[0]
+    }
+
+    // Step 2: Atomically checkout the next todo or backlog task.
+    // Priority order: todo before backlog, then by priority weight, then oldest first.
+    // Uses a single UPDATE ... RETURNING to prevent race conditions.
+    // NOTE: PGlite does not support FOR UPDATE SKIP LOCKED, so we use a
+    // simple subquery approach. This is safe for single-process PGlite usage.
+    const checkout = await this.db.query<TaskRow>(
+      `UPDATE issues SET status = 'in_progress', updated_at = NOW()
+       WHERE id = (
+         SELECT id FROM issues
+         WHERE assignee_agent_id = $1 AND status IN ('todo', 'backlog')
+         ORDER BY
+           CASE WHEN status = 'todo' THEN 0 ELSE 1 END,
+           CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
+           created_at ASC
+         LIMIT 1
+       )
+       RETURNING id, title, description, goal_id, project_id`,
+      [agentId],
+    )
+
+    if (checkout.rows.length > 0) {
+      const task = checkout.rows[0]
+
+      // Step 3: Log the checkout to Observatory (non-blocking, fire-and-forget)
+      this.observatory.logEvent({
+        company_id: companyId,
+        entity_type: 'issue',
+        entity_id: task.id,
+        actor_type: 'agent',
+        actor_id: agentId,
+        action: 'task_checkout',
+        changes: { title: task.title, previousStatus: 'todo' },
+      })
+
+      return task
+    }
+
+    return null
   }
 
   /**

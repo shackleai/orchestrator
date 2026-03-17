@@ -9,6 +9,7 @@ import { ActivityPage } from './pages/activity'
 import { CostsPage } from './pages/costs'
 import { OrgChartPage } from './pages/org-chart'
 import { SettingsPage } from './pages/settings'
+import { TaskDetailPage } from './pages/task-detail'
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
         <Route path="agents" element={<AgentsPage />} />
         <Route path="agents/:id" element={<AgentDetailPage />} />
         <Route path="tasks" element={<TasksPage />} />
+        <Route path="tasks/:id" element={<TaskDetailPage />} />
         <Route path="board" element={<KanbanPage />} />
         <Route path="activity" element={<ActivityPage />} />
         <Route path="costs" element={<CostsPage />} />

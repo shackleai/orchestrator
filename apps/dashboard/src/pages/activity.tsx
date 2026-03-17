@@ -75,6 +75,7 @@ export function ActivityPage() {
         to: toDate || undefined,
       }),
     enabled: !!companyId,
+    refetchInterval: 10_000,
   })
 
   return (

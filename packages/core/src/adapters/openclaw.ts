@@ -31,6 +31,7 @@ const RESULT_MARKER = '__shackleai_result__'
 
 interface ShackleAIResult {
   session_id_after?: string | null
+  taskStatus?: 'done' | 'in_review' | 'in_progress'
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -178,10 +179,11 @@ export class OpenClawAdapter implements AdapterModule {
           stdout += `\n[WARNING] stdout truncated at ${MAX_STDOUT_BYTES} bytes (10 MB limit)`
         }
 
-        // Parse structured result block for usage and session state
+        // Parse structured result block for usage, session state, and task status
         const result = parseResultBlock(stdout)
         const sessionState = result?.session_id_after ?? null
         const usage = result?.usage ?? undefined
+        const taskStatus = result?.taskStatus ?? null
 
         resolve({
           exitCode: killed ? 124 : (code ?? 1),
@@ -190,6 +192,7 @@ export class OpenClawAdapter implements AdapterModule {
             ? `Process killed after ${timeoutMs}ms timeout\n${stderr}`
             : stderr,
           sessionState,
+          taskStatus,
           usage,
         })
       })

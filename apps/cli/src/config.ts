@@ -16,6 +16,10 @@ export interface ShackleAIConfig {
   databaseUrl?: string
   dataDir?: string
   port?: number
+  llmKeys?: {
+    openai?: string
+    anthropic?: string
+  }
 }
 
 export const DEFAULT_PORT = 4800

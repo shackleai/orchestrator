@@ -14,6 +14,16 @@ export function getSafeEnv(
     'LC_',
     'SHACKLEAI_',
     'NODE_',
+    'OPENAI_API_KEY',
+    'ANTHROPIC_API_KEY',
+    'PYTHON',
+    'APPDATA',
+    'LOCALAPPDATA',
+    'ProgramFiles',
+    'ProgramData',
+    'HOMEDRIVE',
+    'HOMEPATH',
+    'VIRTUAL_ENV',
   ]
 
   for (const [key, value] of Object.entries(process.env)) {

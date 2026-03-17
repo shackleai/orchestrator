@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import { useParams, Link } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { ArrowLeft, Bot, Activity } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, Bot, Activity, Play, Pause, XCircle, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,8 +14,28 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { fetchAgent, fetchHeartbeats, type Agent, type HeartbeatRun } from '@/lib/api'
+import { Select } from '@/components/ui/select'
+import { fetchAgent, fetchHeartbeats, wakeupAgent, updateAgent, pauseAgent, resumeAgent, terminateAgent, type Agent, type HeartbeatRun } from '@/lib/api'
 import { cn, formatCents, formatDate, formatRelativeTime } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
+
+function cronToLabel(cron: string | undefined): string {
+  if (!cron) return 'Manual'
+  if (cron === '*/1 * * * *') return 'Every 1m'
+  if (cron === '*/5 * * * *') return 'Every 5m'
+  if (cron === '*/15 * * * *') return 'Every 15m'
+  if (cron === '*/30 * * * *') return 'Every 30m'
+  if (cron === '0 * * * *') return 'Hourly'
+  return cron
+}
+
+const SCHEDULE_OPTIONS = [
+  { value: '', label: 'Manual only' },
+  { value: '*/5 * * * *', label: 'Every 5 minutes' },
+  { value: '*/15 * * * *', label: 'Every 15 minutes' },
+  { value: '*/30 * * * *', label: 'Every 30 minutes' },
+  { value: '0 * * * *', label: 'Every hour' },
+] as const
 
 const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
   active: 'success',
@@ -68,9 +89,192 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
+function HeartbeatTable({ heartbeats }: { heartbeats: HeartbeatRun[] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const toggle = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-8"></TableHead>
+          <TableHead>Trigger</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="hidden sm:table-cell">Started</TableHead>
+          <TableHead className="hidden md:table-cell">Exit</TableHead>
+          <TableHead>Error</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {heartbeats.map((hb) => {
+          const isOpen = expanded.has(hb.id)
+          const hasOutput = hb.stdout_excerpt || hb.error || hb.usage_json
+          return (
+            <>
+              <TableRow
+                key={hb.id}
+                className={hasOutput ? 'cursor-pointer hover:bg-muted/50' : ''}
+                onClick={() => hasOutput && toggle(hb.id)}
+              >
+                <TableCell className="w-8 px-2">
+                  {hasOutput && (
+                    isOpen
+                      ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </TableCell>
+                <TableCell className="capitalize">{hb.trigger_type}</TableCell>
+                <TableCell>
+                  <Badge
+                    variant={heartbeatStatusVariant[hb.status] ?? 'secondary'}
+                    className="capitalize"
+                  >
+                    {hb.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
+                  {formatRelativeTime(hb.started_at)}
+                </TableCell>
+                <TableCell className="hidden md:table-cell font-mono text-xs">
+                  {hb.exit_code ?? '—'}
+                </TableCell>
+                <TableCell className="max-w-[200px] truncate text-xs text-destructive-foreground">
+                  {hb.error ? hb.error.split('\n')[0] : '—'}
+                </TableCell>
+              </TableRow>
+              {isOpen && (
+                <TableRow key={`${hb.id}-detail`}>
+                  <TableCell colSpan={6} className="bg-muted/30 p-4">
+                    <div className="space-y-3">
+                      {hb.stdout_excerpt && (
+                        <div>
+                          <p className="mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agent Output</p>
+                          <pre className="max-h-[400px] overflow-auto rounded-md bg-background p-3 text-xs font-mono whitespace-pre-wrap border">
+                            {hb.stdout_excerpt}
+                          </pre>
+                        </div>
+                      )}
+                      {hb.error && (
+                        <div>
+                          <p className="mb-1 text-xs font-semibold text-destructive uppercase tracking-wide">Error</p>
+                          <pre className="overflow-auto rounded-md bg-background p-3 text-xs font-mono whitespace-pre-wrap border border-destructive/20">
+                            {hb.error}
+                          </pre>
+                        </div>
+                      )}
+                      {hb.usage_json && (() => {
+                        try {
+                          const u = JSON.parse(hb.usage_json)
+                          return (
+                            <div className="flex gap-4 text-xs text-muted-foreground">
+                              <span>Provider: <strong>{u.provider}</strong></span>
+                              <span>Model: <strong>{u.model}</strong></span>
+                              <span>Input: <strong>{u.inputTokens}</strong> tokens</span>
+                              <span>Output: <strong>{u.outputTokens}</strong> tokens</span>
+                              <span>Cost: <strong>${(u.costCents / 100).toFixed(2)}</strong></span>
+                            </div>
+                          )
+                        } catch { return null }
+                      })()}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
+}
+
 export function AgentDetailPage() {
   const { id: agentId } = useParams<{ id: string }>()
   const companyId = useCompanyId()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const { toast } = useToast()
+
+  const [editingSchedule, setEditingSchedule] = useState(false)
+  const [scheduleChanged, setScheduleChanged] = useState(false)
+
+  const pause = useMutation({
+    mutationFn: () => pauseAgent(companyId!, agentId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent', companyId, agentId] })
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast('Agent paused', 'info')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to pause agent: ${err.message}`, 'error')
+    },
+  })
+
+  const resume = useMutation({
+    mutationFn: () => resumeAgent(companyId!, agentId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent', companyId, agentId] })
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast('Agent resumed', 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to resume agent: ${err.message}`, 'error')
+    },
+  })
+
+  const terminate = useMutation({
+    mutationFn: () => terminateAgent(companyId!, agentId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast('Agent terminated', 'info')
+      navigate('/agents')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to terminate agent: ${err.message}`, 'error')
+    },
+  })
+
+  const wakeup = useMutation({
+    mutationFn: () => wakeupAgent(companyId!, agentId!),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['heartbeats', companyId, agentId] })
+      queryClient.invalidateQueries({ queryKey: ['agent', companyId, agentId] })
+      toast(`Heartbeat completed (exit: ${data?.exit_code ?? 'n/a'})`, 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Heartbeat failed: ${err.message}`, 'error')
+    },
+  })
+
+  const updateSchedule = useMutation({
+    mutationFn: (newCron: string) => {
+      const currentConfig = agent?.adapter_config ?? {}
+      const updatedConfig = { ...currentConfig }
+      if (newCron) {
+        updatedConfig.cron = newCron
+      } else {
+        delete updatedConfig.cron
+      }
+      return updateAgent(companyId!, agentId!, { adapter_config: updatedConfig })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent', companyId, agentId] })
+      setEditingSchedule(false)
+      setScheduleChanged(true)
+      toast('Schedule updated', 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to update schedule: ${err.message}`, 'error')
+    },
+  })
 
   const {
     data: agent,
@@ -80,12 +284,14 @@ export function AgentDetailPage() {
     queryKey: ['agent', companyId, agentId],
     queryFn: () => fetchAgent(companyId!, agentId!),
     enabled: !!companyId && !!agentId,
+    refetchInterval: 5_000,
   })
 
   const { data: heartbeats, isLoading: heartbeatsLoading } = useQuery<HeartbeatRun[]>({
     queryKey: ['heartbeats', companyId, agentId],
     queryFn: () => fetchHeartbeats(companyId!, agentId!),
     enabled: !!companyId && !!agentId,
+    refetchInterval: 5_000,
   })
 
   if (agentLoading) return <DetailSkeleton />
@@ -122,13 +328,93 @@ export function AgentDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
+        <div className="flex-1">
           <h2 className="text-lg font-semibold">{agent.name}</h2>
           {agent.title && (
             <p className="text-sm text-muted-foreground">{agent.title}</p>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => wakeup.mutate()}
+            disabled={wakeup.isPending || !companyId || agent.status === 'terminated'}
+          >
+            {wakeup.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {wakeup.isPending ? 'Running...' : 'Run Heartbeat'}
+          </Button>
+          {agent.status !== 'terminated' && (
+            <>
+              {agent.status === 'paused' ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resume.mutate()}
+                  disabled={resume.isPending || !companyId}
+                >
+                  {resume.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4 text-emerald-500" />
+                  )}
+                  {resume.isPending ? 'Resuming...' : 'Resume'}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => pause.mutate()}
+                  disabled={pause.isPending || !companyId}
+                >
+                  {pause.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Pause className="h-4 w-4 text-amber-500" />
+                  )}
+                  {pause.isPending ? 'Pausing...' : 'Pause'}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  if (window.confirm('Terminate agent? This cannot be undone.')) {
+                    terminate.mutate()
+                  }
+                }}
+                disabled={terminate.isPending || !companyId}
+              >
+                {terminate.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                {terminate.isPending ? 'Terminating...' : 'Terminate'}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Wakeup result banner */}
+      {wakeup.isSuccess && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm">
+          Heartbeat triggered successfully.
+          {wakeup.data.exit_code !== null && (
+            <> Exit code: <code className="font-mono">{wakeup.data.exit_code}</code></>
+          )}
+        </div>
+      )}
+      {wakeup.isError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          Failed to trigger heartbeat: {(wakeup.error as Error).message}
+        </div>
+      )}
 
       {/* Info cards */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -154,6 +440,60 @@ export function AgentDetailPage() {
             <InfoRow label="Last Heartbeat">
               {formatRelativeTime(agent.last_heartbeat_at)}
             </InfoRow>
+            <InfoRow label="Schedule">
+              {editingSchedule ? (
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={(agent.adapter_config?.cron as string) ?? ''}
+                    onChange={(e) => updateSchedule.mutate(e.target.value)}
+                    disabled={updateSchedule.isPending}
+                    className="h-7 text-xs"
+                    aria-label="Change schedule"
+                  >
+                    {SCHEDULE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setEditingSchedule(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={agent.adapter_config?.cron ? 'info' : 'secondary'}
+                    className="text-xs"
+                  >
+                    {cronToLabel(agent.adapter_config?.cron as string | undefined)}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-muted-foreground"
+                    onClick={() => setEditingSchedule(true)}
+                  >
+                    Change
+                  </Button>
+                </div>
+              )}
+            </InfoRow>
+            {scheduleChanged && (
+              <p className="px-0 py-2 text-xs text-amber-600">
+                Restart the server for schedule changes to take effect.
+              </p>
+            )}
+            {updateSchedule.isError && (
+              <p className="px-0 py-2 text-xs text-destructive">
+                Failed to update schedule: {(updateSchedule.error as Error).message}
+              </p>
+            )}
             <InfoRow label="Created">{formatDate(agent.created_at)}</InfoRow>
           </CardContent>
         </Card>
@@ -211,45 +551,7 @@ export function AgentDetailPage() {
               No heartbeat data yet
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Trigger</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden sm:table-cell">Started</TableHead>
-                  <TableHead className="hidden md:table-cell">Finished</TableHead>
-                  <TableHead className="hidden md:table-cell">Exit Code</TableHead>
-                  <TableHead>Error</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {heartbeats.map((hb) => (
-                  <TableRow key={hb.id}>
-                    <TableCell className="capitalize">{hb.trigger_type}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={heartbeatStatusVariant[hb.status] ?? 'secondary'}
-                        className="capitalize"
-                      >
-                        {hb.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                      {formatRelativeTime(hb.started_at)}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                      {formatRelativeTime(hb.finished_at)}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell font-mono text-xs">
-                      {hb.exit_code ?? '—'}
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-xs text-destructive-foreground">
-                      {hb.error ?? '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <HeartbeatTable heartbeats={heartbeats} />
           )}
         </CardContent>
       </Card>
