@@ -89,9 +89,21 @@ export async function startCommand(options: { port: number }): Promise<void> {
 
   Dashboard: http://127.0.0.1:${port}
   Health:    http://127.0.0.1:${port}/api/health
+
+  Press Ctrl+C to stop.
   `)
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+
+  // Prevent stdin from keeping the process waiting for input on Windows
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true)
+    process.stdin.resume()
+    process.stdin.on('data', (key) => {
+      // Ctrl+C = 0x03
+      if (key[0] === 0x03) shutdown()
+    })
+  }
 
   // Graceful shutdown on Ctrl+C
   const shutdown = () => {
