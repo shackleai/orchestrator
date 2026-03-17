@@ -1,5 +1,5 @@
 /**
- * Issue CRUD + checkout + comments routes — /api/companies/:id/issues
+ * Issue CRUD + checkout + delegate routes — /api/companies/:id/issues
  */
 
 import { Hono } from 'hono'
