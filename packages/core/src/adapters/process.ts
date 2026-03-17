@@ -7,6 +7,10 @@
  */
 
 import { spawn } from 'node:child_process'
+import { writeFileSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import type { WorktreeConfig } from '@shackleai/shared'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
@@ -69,6 +73,19 @@ export class ProcessAdapter implements AdapterModule {
       env.SHACKLEAI_SESSION_STATE = ctx.sessionState
     }
 
+    // Inject system context via env var or temp file (if > 8KB)
+    let contextTmpFile: string | undefined
+    if (ctx.systemContext) {
+      const MAX_ENV_BYTES = 8 * 1024
+      if (Buffer.byteLength(ctx.systemContext, 'utf-8') > MAX_ENV_BYTES) {
+        contextTmpFile = join(tmpdir(), `shackleai-ctx-${randomUUID()}.md`)
+        writeFileSync(contextTmpFile, ctx.systemContext, 'utf-8')
+        env.SHACKLEAI_CONTEXT_FILE = contextTmpFile
+      } else {
+        env.SHACKLEAI_CONTEXT = ctx.systemContext
+      }
+    }
+
     // Worktree-aware execution: inject worktree env vars and set cwd
     const worktreeConfig = ctx.adapterConfig.worktree as
       | WorktreeConfig
@@ -111,6 +128,7 @@ export class ProcessAdapter implements AdapterModule {
       child.on('close', (code) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.cleanupTmpFile(contextTmpFile)
 
         const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
         const stderr = Buffer.concat(stderrChunks).toString('utf-8')
@@ -125,6 +143,7 @@ export class ProcessAdapter implements AdapterModule {
       child.on('error', (err) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.cleanupTmpFile(contextTmpFile)
 
         resolve({
           exitCode: 127,
@@ -138,5 +157,14 @@ export class ProcessAdapter implements AdapterModule {
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
     // Basic check — Node.js can always spawn processes
     return { ok: true }
+  }
+
+  private cleanupTmpFile(filePath: string | undefined): void {
+    if (!filePath) return
+    try {
+      unlinkSync(filePath)
+    } catch {
+      // Best-effort cleanup
+    }
   }
 }

@@ -43,6 +43,9 @@ export interface AdapterContext {
   delegatedBy?: string
   /** Child tasks created by this agent via delegation. */
   subTasks?: Array<{ id: string; title: string; status: string }>
+
+  /** Structured system context built by ContextBuilder (Markdown). */
+  systemContext?: string
 }
 
 export interface AdapterResult {

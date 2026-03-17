@@ -48,6 +48,7 @@ export class HttpAdapter implements AdapterModule {
       task: ctx.task ?? null,
       sessionState: ctx.sessionState ?? null,
       ancestry: ctx.ancestry ?? null,
+      systemContext: ctx.systemContext ?? null,
     }
 
     const controller = new AbortController()

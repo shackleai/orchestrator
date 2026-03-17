@@ -32,6 +32,7 @@ import {
 } from '@shackleai/shared'
 import type { CostTracker } from '../cost-tracker.js'
 import type { Observatory } from '../observatory.js'
+import { ContextBuilder } from '../context-builder.js'
 import type { AdapterRegistry } from '../adapters/index.js'
 import type { AdapterContext, AdapterResult, GoalAncestry } from '../adapters/index.js'
 import { getLastSessionState, saveSessionState } from '../adapters/index.js'
@@ -79,6 +80,7 @@ export class HeartbeatExecutor {
   private costTracker: CostTracker
   private observatory: Observatory
   private adapterRegistry: AdapterRegistry
+  private contextBuilder: ContextBuilder
 
   constructor(
     db: DatabaseProvider,
@@ -90,6 +92,7 @@ export class HeartbeatExecutor {
     this.costTracker = costTracker
     this.observatory = observatory
     this.adapterRegistry = adapterRegistry
+    this.contextBuilder = new ContextBuilder(db)
   }
 
   /**
@@ -173,13 +176,14 @@ export class HeartbeatExecutor {
 
       // Build agent communication context (async awareness)
       const lastHeartbeat = agent.last_heartbeat_at ?? null
-      const [recentActivity, assignedTasks, unreadComments, ancestry, delegationCtx] =
+      const [recentActivity, assignedTasks, unreadComments, ancestry, delegationCtx, systemContext] =
         await Promise.all([
           this.getRecentActivity(companyId, lastHeartbeat),
           this.getAssignedTasks(agentId),
           this.getUnreadComments(agentId, lastHeartbeat),
           this.resolveAncestry(companyId, task),
           this.getDelegationContext(agentId, task),
+          this.contextBuilder.build(agentId, companyId),
         ])
 
       const ctx: AdapterContext = {
@@ -196,6 +200,7 @@ export class HeartbeatExecutor {
         ancestry,
         delegatedBy: delegationCtx?.delegatedBy,
         subTasks: delegationCtx?.subTasks,
+        systemContext,
       }
 
       // Mark run as running
