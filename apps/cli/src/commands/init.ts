@@ -9,7 +9,13 @@ import type { DatabaseProvider } from '@shackleai/db'
 import { readConfig, writeConfig } from '../config.js'
 import { VERSION } from '../index.js'
 
-export async function initCommand(options: { force?: boolean } = {}): Promise<void> {
+export interface InitOptions {
+  force?: boolean
+  yes?: boolean
+  name?: string
+}
+
+export async function initCommand(options: InitOptions = {}): Promise<void> {
   p.intro(`ShackleAI Orchestrator v${VERSION}`)
 
   // Check if already initialized
@@ -20,6 +26,16 @@ export async function initCommand(options: { force?: boolean } = {}): Promise<vo
     )
     p.outro(`Company: ${existingConfig.companyName} (${existingConfig.companyId})`)
     return
+  }
+
+  // Non-interactive mode
+  if (options.yes) {
+    if (!options.name) {
+      p.log.error('Company name required with --yes. Use --name flag.')
+      process.exit(1)
+    }
+
+    return initNonInteractive(options.name)
   }
 
   const mode = await p.select({
@@ -204,6 +220,55 @@ export async function initCommand(options: { force?: boolean } = {}): Promise<vo
     companyName: companyName.trim(),
     ...(databaseUrl ? { databaseUrl } : {}),
     ...(mode === 'local' ? { dataDir: 'default' } : {}),
+  })
+
+  await db.close()
+
+  p.outro(`Setup complete! Run \`shackleai start\` to launch the server.`)
+}
+
+/**
+ * Non-interactive init — skips all prompts, uses defaults:
+ * local mode, no mission, no agent creation.
+ */
+async function initNonInteractive(companyName: string): Promise<void> {
+  const spin = p.spinner()
+  spin.start('Initializing database...')
+
+  const db = new PGliteProvider('default')
+  await runMigrations(db)
+  spin.stop('Database initialized')
+
+  spin.start('Creating company...')
+  const issuePrefix = companyName
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 5)
+
+  let companyId: string
+  try {
+    const companyResult = await db.query<{ id: string }>(
+      `INSERT INTO companies (name, description, issue_prefix)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [companyName.trim(), null, issuePrefix || 'MAIN'],
+    )
+    companyId = companyResult.rows[0].id
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    spin.stop('Failed to create company')
+    console.error(`Database error: ${message}`)
+    await db.close()
+    process.exit(1)
+  }
+  spin.stop('Company created')
+
+  await writeConfig({
+    mode: 'local',
+    companyId,
+    companyName: companyName.trim(),
+    dataDir: 'default',
   })
 
   await db.close()

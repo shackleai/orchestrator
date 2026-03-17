@@ -64,6 +64,38 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       budget_monthly_cents,
     } = parsed.data
 
+    // Check if company requires approval for agent creation
+    const company = c.get('company')
+    const requireApproval = company.require_approval === true
+
+    if (requireApproval) {
+      const approvalResult = await db.query<{ id: string }>(
+        `INSERT INTO approvals (company_id, type, payload, requested_by)
+         VALUES ($1, 'agent_create', $2, $3)
+         RETURNING id`,
+        [
+          companyId,
+          JSON.stringify({
+            name,
+            title: title ?? null,
+            role,
+            status,
+            reports_to: reports_to ?? null,
+            capabilities: capabilities ?? null,
+            adapter_type,
+            adapter_config,
+            budget_monthly_cents,
+          }),
+          null,
+        ],
+      )
+
+      return c.json(
+        { data: { approval_id: approvalResult.rows[0].id, status: 'pending_approval' } },
+        202,
+      )
+    }
+
     const result = await db.query<Agent>(
       `INSERT INTO agents
          (company_id, name, title, role, status, reports_to, capabilities,

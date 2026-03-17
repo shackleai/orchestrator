@@ -11,6 +11,9 @@ import type { DatabaseProvider } from '@shackleai/db'
 /**
  * Get the session state from the last successful heartbeat run for an agent.
  * Returns null if no prior successful run exists.
+ *
+ * The raw string is returned as-is. Callers that stored JSON via
+ * `saveSessionState` can parse it themselves (the round-trip is lossless).
  */
 export async function getLastSessionState(
   agentId: string,
@@ -35,14 +38,19 @@ export async function getLastSessionState(
 /**
  * Save session state after a heartbeat run completes.
  * Updates the heartbeat_run's session_id_after column.
+ *
+ * If the value is an object, it is JSON.stringified before storage.
  */
 export async function saveSessionState(
   heartbeatRunId: string,
-  sessionState: string,
+  sessionState: string | Record<string, unknown>,
   db: DatabaseProvider,
 ): Promise<void> {
+  const serialized =
+    typeof sessionState === 'object' ? JSON.stringify(sessionState) : sessionState
+
   await db.query(
     `UPDATE heartbeat_runs SET session_id_after = $1 WHERE id = $2`,
-    [sessionState, heartbeatRunId],
+    [serialized, heartbeatRunId],
   )
 }

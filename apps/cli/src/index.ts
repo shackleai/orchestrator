@@ -17,6 +17,8 @@ import { registerGoalCommand } from './commands/goal.js'
 import { registerProjectCommand } from './commands/project.js'
 import { registerCompanyCommand } from './commands/company.js'
 import { registerCommentCommand } from './commands/comment.js'
+import { registerConfigCommand } from './commands/config-cmd.js'
+import { registerApprovalCommand } from './commands/approval.js'
 
 export const VERSION = '0.1.0'
 
@@ -31,8 +33,10 @@ program
   .command('init')
   .description('Initialize a new ShackleAI orchestrator')
   .option('--force', 'Reinitialize even if already configured')
-  .action(async (opts: { force?: boolean }) => {
-    await initCommand({ force: opts.force })
+  .option('--yes', 'Non-interactive mode with defaults')
+  .option('--name <name>', 'Company name (required with --yes)')
+  .action(async (opts: { force?: boolean; yes?: boolean; name?: string }) => {
+    await initCommand({ force: opts.force, yes: opts.yes, name: opts.name })
   })
 
 program
@@ -53,6 +57,8 @@ registerGoalCommand(program)
 registerProjectCommand(program)
 registerCompanyCommand(program)
 registerCommentCommand(program)
+registerConfigCommand(program)
+registerApprovalCommand(program)
 
 // Only parse when run as CLI entrypoint — not when imported for VERSION etc.
 const isDirectRun =

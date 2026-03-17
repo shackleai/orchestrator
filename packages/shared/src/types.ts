@@ -11,6 +11,7 @@ export interface Company {
   issue_counter: number
   budget_monthly_cents: number
   spent_monthly_cents: number
+  require_approval: boolean
   created_at: Date
   updated_at: Date
 }
@@ -228,4 +229,16 @@ export interface CleanupResult {
   removed: string[]
   stashed: string[]
   skipped: string[]
+}
+
+export interface Approval {
+  id: string
+  company_id: string
+  type: string
+  payload: Record<string, unknown>
+  status: string
+  requested_by: string | null
+  decided_by: string | null
+  decided_at: string | null
+  created_at: string
 }
