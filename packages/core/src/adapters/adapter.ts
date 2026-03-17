@@ -38,6 +38,9 @@ export interface AdapterContext {
 
   /** Full ancestry chain: mission → project → goal → task. */
   ancestry?: GoalAncestry
+
+  /** Structured system context built by ContextBuilder (Markdown). */
+  systemContext?: string
 }
 
 export interface AdapterResult {

@@ -83,6 +83,7 @@ export class McpAdapter implements AdapterModule {
           task: ctx.task ?? null,
           sessionState: ctx.sessionState ?? null,
           ancestry: ctx.ancestry ?? null,
+          systemContext: ctx.systemContext ?? null,
         },
       }
 

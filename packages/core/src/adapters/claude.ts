@@ -86,15 +86,20 @@ export class ClaudeAdapter implements AdapterModule {
       }
     }
 
-    // Prepend ancestry context to the prompt if available
+    // Prepend system context and ancestry to the prompt
     let fullPrompt = prompt
+
+    if (ctx.systemContext) {
+      fullPrompt = `${ctx.systemContext}\n\n${fullPrompt}`
+    }
+
     if (ctx.ancestry) {
       const parts: string[] = []
       if (ctx.ancestry.mission) parts.push(`Mission: ${ctx.ancestry.mission}`)
       if (ctx.ancestry.project) parts.push(`Project: ${ctx.ancestry.project.name}`)
       if (ctx.ancestry.goal) parts.push(`Goal: ${ctx.ancestry.goal.name}`)
       if (parts.length > 0) {
-        fullPrompt = `Context: ${parts.join(' | ')}\n\n${prompt}`
+        fullPrompt = `Context: ${parts.join(' | ')}\n\n${fullPrompt}`
       }
     }
 
