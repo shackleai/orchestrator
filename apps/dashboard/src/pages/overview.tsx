@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
 import {
   Bot,
@@ -18,13 +19,15 @@ function StatCard({
   label,
   value,
   icon: Icon,
+  href,
 }: {
   label: string
   value: string | number
   icon: React.ComponentType<{ className?: string }>
+  href?: string
 }) {
-  return (
-    <Card>
+  const content = (
+    <Card className={href ? 'transition-colors hover:border-primary/50 hover:bg-muted/50' : undefined}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {label}
@@ -36,6 +39,16 @@ function StatCard({
       </CardContent>
     </Card>
   )
+
+  if (href) {
+    return (
+      <Link to={href} className="no-underline">
+        {content}
+      </Link>
+    )
+  }
+
+  return content
 }
 
 function OverviewSkeleton() {
@@ -120,18 +133,20 @@ export function OverviewPage() {
     <div className="space-y-6">
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Agents" value={data.agentCount} icon={Bot} />
-        <StatCard label="Total Tasks" value={data.taskCount} icon={ListTodo} />
-        <StatCard label="Open Tasks" value={data.openTasks} icon={CircleDot} />
+        <StatCard label="Agents" value={data.agentCount} icon={Bot} href="/agents" />
+        <StatCard label="Total Tasks" value={data.taskCount} icon={ListTodo} href="/tasks" />
+        <StatCard label="Open Tasks" value={data.openTasks} icon={CircleDot} href="/tasks" />
         <StatCard
           label="Completed"
           value={data.completedTasks}
           icon={CheckCircle2}
+          href="/tasks"
         />
         <StatCard
           label="Total Spend"
           value={formatCents(data.totalSpendCents)}
           icon={DollarSign}
+          href="/costs"
         />
       </div>
 

@@ -208,6 +208,8 @@ export function AgentDetailPage() {
 
   const [editingSchedule, setEditingSchedule] = useState(false)
   const [scheduleChanged, setScheduleChanged] = useState(false)
+  const [pendingSchedule, setPendingSchedule] = useState<string | null>(null)
+  const [confirmingTerminate, setConfirmingTerminate] = useState(false)
 
   const pause = useMutation({
     mutationFn: () => pauseAgent(companyId!, agentId!),
@@ -271,6 +273,7 @@ export function AgentDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent', companyId, agentId] })
       setEditingSchedule(false)
+      setPendingSchedule(null)
       setScheduleChanged(true)
       toast('Schedule updated', 'success')
     },
@@ -391,23 +394,40 @@ export function AgentDetailPage() {
                   {pause.isPending ? 'Pausing...' : 'Pause'}
                 </Button>
               )}
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => {
-                  if (window.confirm('Terminate agent? This cannot be undone.')) {
-                    terminate.mutate()
-                  }
-                }}
-                disabled={terminate.isPending || !companyId}
-              >
-                {terminate.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {confirmingTerminate ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-destructive">Are you sure?</span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => terminate.mutate()}
+                    disabled={terminate.isPending || !companyId}
+                  >
+                    {terminate.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Yes, terminate'
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setConfirmingTerminate(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setConfirmingTerminate(true)}
+                  disabled={terminate.isPending || !companyId}
+                >
                   <XCircle className="h-4 w-4" />
-                )}
-                {terminate.isPending ? 'Terminating...' : 'Terminate'}
-              </Button>
+                  Terminate
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -456,8 +476,8 @@ export function AgentDetailPage() {
               {editingSchedule ? (
                 <div className="flex items-center gap-2">
                   <Select
-                    value={(agent.adapter_config?.cron as string) ?? ''}
-                    onChange={(e) => updateSchedule.mutate(e.target.value)}
+                    value={pendingSchedule ?? (agent.adapter_config?.cron as string) ?? ''}
+                    onChange={(e) => setPendingSchedule(e.target.value)}
                     disabled={updateSchedule.isPending}
                     className="h-7 text-xs"
                     aria-label="Change schedule"
@@ -469,10 +489,29 @@ export function AgentDetailPage() {
                     ))}
                   </Select>
                   <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={updateSchedule.isPending || pendingSchedule === null}
+                    onClick={() => {
+                      if (pendingSchedule !== null) {
+                        updateSchedule.mutate(pendingSchedule)
+                      }
+                    }}
+                  >
+                    {updateSchedule.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      'Save'
+                    )}
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs"
-                    onClick={() => setEditingSchedule(false)}
+                    onClick={() => {
+                      setEditingSchedule(false)
+                      setPendingSchedule(null)
+                    }}
                   >
                     Cancel
                   </Button>

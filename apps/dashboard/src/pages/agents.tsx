@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { Bot, Plus, Play, Pause, XCircle, Loader2, Search } from 'lucide-react'
+import { Bot, Plus, Play, Loader2, Search } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -347,13 +347,15 @@ function CreateAgentForm({
   )
 }
 
-function RunButton({ companyId, agentId }: { companyId: string; agentId: string }) {
+function AgentActions({ companyId, agent }: { companyId: string; agent: Agent }) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const mutation = useMutation({
-    mutationFn: () => wakeupAgent(companyId, agentId),
+  const [confirmingTerminate, setConfirmingTerminate] = useState(false)
+
+  const wakeup = useMutation({
+    mutationFn: () => wakeupAgent(companyId, agent.id),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['heartbeats', companyId, agentId] })
+      queryClient.invalidateQueries({ queryKey: ['heartbeats', companyId, agent.id] })
       queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
       toast(`Heartbeat triggered (exit: ${data?.exit_code ?? 'n/a'})`, 'success')
     },
@@ -361,40 +363,6 @@ function RunButton({ companyId, agentId }: { companyId: string; agentId: string 
       toast(`Heartbeat failed: ${err.message}`, 'error')
     },
   })
-
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={(e) => {
-        e.stopPropagation()
-        mutation.mutate()
-      }}
-      disabled={mutation.isPending}
-      aria-label="Run heartbeat"
-      title={
-        mutation.isSuccess
-          ? `Triggered: exit code ${mutation.data?.exit_code ?? 'n/a'}`
-          : mutation.isError
-            ? (mutation.error as Error).message
-            : 'Run heartbeat'
-      }
-    >
-      {mutation.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : mutation.isSuccess ? (
-        <Badge variant="success" className="text-[10px] px-1.5 py-0">
-          done
-        </Badge>
-      ) : (
-        <Play className="h-3.5 w-3.5" />
-      )}
-    </Button>
-  )
-}
-
-function AgentActions({ companyId, agent }: { companyId: string; agent: Agent }) {
-  const queryClient = useQueryClient()
 
   const pause = useMutation({
     mutationFn: () => pauseAgent(companyId, agent.id),
@@ -414,71 +382,115 @@ function AgentActions({ companyId, agent }: { companyId: string; agent: Agent })
     mutationFn: () => terminateAgent(companyId, agent.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      setConfirmingTerminate(false)
     },
   })
 
-  if (agent.status === 'terminated') return null
+  const isPending = wakeup.isPending || pause.isPending || resume.isPending || terminate.isPending
 
-  const isPending = pause.isPending || resume.isPending || terminate.isPending
+  if (confirmingTerminate) {
+    return (
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-destructive whitespace-nowrap">Are you sure?</span>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            terminate.mutate()
+          }}
+          disabled={terminate.isPending}
+        >
+          {terminate.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            'Yes, terminate'
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            setConfirmingTerminate(false)
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-1">
-      {agent.status === 'paused' ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            resume.mutate()
-          }}
-          disabled={isPending}
-          aria-label="Resume agent"
-          title="Resume agent"
-        >
-          {resume.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Play className="h-3.5 w-3.5 text-emerald-500" />
-          )}
-        </Button>
-      ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            pause.mutate()
-          }}
-          disabled={isPending}
-          aria-label="Pause agent"
-          title="Pause agent"
-        >
-          {pause.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Pause className="h-3.5 w-3.5 text-amber-500" />
-          )}
-        </Button>
-      )}
       <Button
-        variant="ghost"
         size="sm"
         onClick={(e) => {
           e.stopPropagation()
-          if (window.confirm('Terminate agent? This cannot be undone.')) {
-            terminate.mutate()
-          }
+          wakeup.mutate()
         }}
-        disabled={isPending}
-        aria-label="Terminate agent"
-        title="Terminate agent"
+        disabled={isPending || agent.status === 'terminated'}
+        aria-label="Run heartbeat"
       >
-        {terminate.isPending ? (
+        {wakeup.isPending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : (
-          <XCircle className="h-3.5 w-3.5 text-red-500" />
+          <Play className="h-3.5 w-3.5" />
         )}
+        Run
       </Button>
+      {agent.status !== 'terminated' && (
+        <>
+          {agent.status === 'paused' ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                resume.mutate()
+              }}
+              disabled={isPending}
+              aria-label="Resume agent"
+            >
+              {resume.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                'Resume'
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                pause.mutate()
+              }}
+              disabled={isPending}
+              aria-label="Pause agent"
+            >
+              {pause.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                'Pause'
+              )}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation()
+              setConfirmingTerminate(true)
+            }}
+            disabled={isPending}
+            aria-label="Terminate agent"
+          >
+            Terminate
+          </Button>
+        </>
+      )}
     </div>
   )
 }
@@ -611,8 +623,7 @@ export function AgentsPage() {
                   <TableHead className="hidden sm:table-cell">Budget</TableHead>
                   <TableHead className="hidden lg:table-cell">Schedule</TableHead>
                   <TableHead className="hidden md:table-cell">Last Heartbeat</TableHead>
-                  <TableHead className="w-[60px]">Run</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -660,11 +671,6 @@ export function AgentsPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                       {formatRelativeTime(agent.last_heartbeat_at)}
-                    </TableCell>
-                    <TableCell>
-                      {companyId && (
-                        <RunButton companyId={companyId} agentId={agent.id} />
-                      )}
                     </TableCell>
                     <TableCell>
                       {companyId && (

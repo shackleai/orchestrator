@@ -244,6 +244,15 @@ export function TasksPage() {
     setPage(0)
   }
 
+  const { data: agents } = useQuery<Agent[]>({
+    queryKey: ['agents', companyId],
+    queryFn: () => fetchAgents(companyId!),
+    enabled: !!companyId,
+    staleTime: 30_000,
+  })
+
+  const agentMap = new Map(agents?.map((a) => [a.id, a.name]) ?? [])
+
   const { data: rawTasks, isLoading, error } = useQuery<Issue[]>({
     queryKey: ['tasks', companyId, statusFilter, priorityFilter, page],
     queryFn: () =>
@@ -362,7 +371,7 @@ export function TasksPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                       {task.assignee_agent_id
-                        ? task.assignee_agent_id.slice(0, 8)
+                        ? agentMap.get(task.assignee_agent_id) ?? 'Unassigned'
                         : 'Unassigned'}
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-xs text-muted-foreground">

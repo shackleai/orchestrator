@@ -5,6 +5,7 @@ import {
   Key,
   Bot,
   ListTodo,
+  ChevronLeft,
   ChevronRight,
   Loader2,
   Eye,
@@ -185,9 +186,11 @@ function StepApiKey({
 function StepCreateAgent({
   companyId,
   onNext,
+  onBack,
 }: {
   companyId: string
   onNext: (agent: Agent) => void
+  onBack: () => void
 }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -281,7 +284,11 @@ function StepCreateAgent({
         </p>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <Button type="button" variant="ghost" onClick={onBack}>
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </Button>
         <Button type="submit" disabled={mutation.isPending || !name.trim()}>
           {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
           {mutation.isPending ? 'Creating...' : 'Create Agent'}
@@ -296,10 +303,12 @@ function StepCreateTask({
   companyId,
   agent,
   onFinish,
+  onBack,
 }: {
   companyId: string
   agent: Agent | null
   onFinish: () => void
+  onBack: () => void
 }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -324,7 +333,7 @@ function StepCreateTask({
     mutation.mutate({
       title: title.trim(),
       priority: 'medium',
-      status: 'open',
+      status: 'todo',
       assignee_agent_id: agent?.id ?? null,
     })
   }
@@ -373,7 +382,11 @@ function StepCreateTask({
         </p>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <Button type="button" variant="ghost" onClick={onBack}>
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </Button>
         <Button type="submit" disabled={mutation.isPending || !title.trim()}>
           {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
           {mutation.isPending ? 'Creating...' : 'Finish'}
@@ -402,8 +415,8 @@ export function OnboardingWizard({ companyId }: { companyId: string }) {
   const handleFinish = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['dashboard', companyId] })
     queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
-    navigate('/agents')
-  }, [companyId, queryClient, navigate])
+    navigate(createdAgent ? `/agents/${createdAgent.id}` : '/agents')
+  }, [companyId, queryClient, navigate, createdAgent])
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
@@ -428,6 +441,7 @@ export function OnboardingWizard({ companyId }: { companyId: string }) {
               <StepCreateAgent
                 companyId={companyId}
                 onNext={handleAgentCreated}
+                onBack={() => setStep(0)}
               />
             )}
             {step === 2 && (
@@ -435,6 +449,7 @@ export function OnboardingWizard({ companyId }: { companyId: string }) {
                 companyId={companyId}
                 agent={createdAgent}
                 onFinish={handleFinish}
+                onBack={() => setStep(1)}
               />
             )}
           </CardContent>
