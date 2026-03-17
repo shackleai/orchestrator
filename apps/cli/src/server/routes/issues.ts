@@ -6,14 +6,15 @@ import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Issue, IssueComment } from '@shackleai/shared'
 import { CreateIssueInput, UpdateIssueInput, CreateIssueCommentInput } from '@shackleai/shared'
-import { IssueStatus } from '@shackleai/shared'
+import { IssueStatus, TriggerType } from '@shackleai/shared'
+import type { Scheduler } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
-export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables }> {
+export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>()
 
   // Inject db into context for all routes
@@ -111,6 +112,11 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
       ],
     )
 
+    // Trigger agent wake-up on task assignment
+    if (assignee_agent_id && scheduler) {
+      void scheduler.triggerNow(assignee_agent_id, TriggerType.TaskAssigned)
+    }
+
     return c.json({ data: result.rows[0] }, 201)
   })
 
@@ -167,14 +173,16 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
     const companyId = c.req.param('id')
     const issueId = c.req.param('issueId')
 
-    // Verify issue exists and belongs to company
-    const existing = await db.query<Issue>(
-      `SELECT id FROM issues WHERE id = $1 AND company_id = $2`,
+    // Verify issue exists and belongs to company; fetch old assignee for trigger comparison
+    const existing = await db.query<Pick<Issue, 'id' | 'assignee_agent_id'>>(
+      `SELECT id, assignee_agent_id FROM issues WHERE id = $1 AND company_id = $2`,
       [issueId, companyId],
     )
     if (existing.rows.length === 0) {
       return c.json({ error: 'Issue not found' }, 404)
     }
+
+    const oldAssignee = existing.rows[0].assignee_agent_id
 
     let body: unknown
     try {
@@ -208,6 +216,12 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
        RETURNING *`,
       [issueId, companyId, ...values],
     )
+
+    // Trigger agent wake-up if assignee changed to a new agent
+    const newAssignee = result.rows[0].assignee_agent_id
+    if (scheduler && newAssignee && newAssignee !== oldAssignee) {
+      void scheduler.triggerNow(newAssignee, TriggerType.TaskAssigned)
+    }
 
     return c.json({ data: result.rows[0] })
   })
@@ -312,6 +326,23 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
        RETURNING *`,
       [issueId, author_agent_id ?? null, content, parent_id ?? null, is_resolved],
     )
+
+    // Trigger mentioned agents — scan for @agent-name patterns
+    if (scheduler) {
+      const mentions = content.match(/@([\w-]+)/g)
+      if (mentions) {
+        const uniqueNames = [...new Set(mentions.map((m) => m.slice(1)))]
+        for (const agentName of uniqueNames) {
+          const agentResult = await db.query<{ id: string }>(
+            `SELECT id FROM agents WHERE company_id = $1 AND name = $2`,
+            [companyId, agentName],
+          )
+          if (agentResult.rows.length > 0) {
+            void scheduler.triggerNow(agentResult.rows[0].id, TriggerType.Mentioned)
+          }
+        }
+      }
+    }
 
     return c.json({ data: result.rows[0] }, 201)
   })
