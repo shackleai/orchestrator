@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { DatabaseProvider, QueryResult } from './provider.js'
@@ -11,7 +12,7 @@ export class PGliteProvider implements DatabaseProvider {
   /**
    * Create a PGlite-backed database provider.
    * @param dataDir — Path to store data. Omit or pass undefined for in-memory mode.
-   *                   Pass a path string for persistent storage (defaults to ~/.shackleai/data/).
+   *                   Pass a path string for persistent storage (defaults to ~/.shackleai/orchestrator/data/).
    *                   Pass `'default'` to use the default data directory.
    */
   constructor(dataDir?: string) {
@@ -19,8 +20,10 @@ export class PGliteProvider implements DatabaseProvider {
       // In-memory mode — no persistence, ideal for tests
       this.db = new PGlite()
     } else if (dataDir === 'default') {
+      mkdirSync(DEFAULT_DATA_DIR, { recursive: true })
       this.db = new PGlite(DEFAULT_DATA_DIR)
     } else {
+      mkdirSync(dataDir, { recursive: true })
       this.db = new PGlite(dataDir)
     }
   }
