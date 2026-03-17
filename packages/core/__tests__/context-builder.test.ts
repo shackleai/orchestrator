@@ -68,8 +68,8 @@ describe('ContextBuilder', () => {
         { identifier: 'ACME-45', title: 'Update docs', status: 'todo', priority: 'medium' },
       ],
       policies: [
-        { resource: 'github.*', action: 'read' },
-        { resource: 'github.*', action: 'write' },
+        { tool_pattern: 'github.*', action: 'read' },
+        { tool_pattern: 'github.*', action: 'write' },
       ],
       reports: [
         { name: 'charlie', role: 'worker' },

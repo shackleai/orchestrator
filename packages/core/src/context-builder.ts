@@ -39,7 +39,7 @@ interface TaskRow {
 }
 
 interface PolicyRow {
-  resource: string
+  tool_pattern: string
   action: string
 }
 
@@ -133,9 +133,9 @@ export class ContextBuilder {
 
   private async getPolicies(companyId: string): Promise<PolicyRow[]> {
     const result = await this.db.query<PolicyRow>(
-      `SELECT resource, action FROM policies
+      `SELECT tool_pattern, action FROM policies
        WHERE company_id = $1
-       ORDER BY resource, action`,
+       ORDER BY tool_pattern, action`,
       [companyId],
     )
     return result.rows
@@ -209,7 +209,7 @@ export class ContextBuilder {
 
     const lines = ['## Governance Policies']
     for (const p of policies) {
-      lines.push(`- ${p.resource}: ${p.action}`)
+      lines.push(`- ${p.tool_pattern}: ${p.action}`)
     }
     return lines.join('\n')
   }
