@@ -163,6 +163,7 @@ export class CrewAIAdapter implements AdapterModule {
       heartbeatRunId: ctx.heartbeatRunId,
       sessionState: ctx.sessionState ?? null,
       ancestry: ctx.ancestry ?? null,
+      systemContext: ctx.systemContext ?? null,
     })
 
     // Build args

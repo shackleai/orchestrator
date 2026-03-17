@@ -100,6 +100,7 @@ export class OpenClawAdapter implements AdapterModule {
       heartbeatRunId: ctx.heartbeatRunId,
       sessionState: ctx.sessionState ?? null,
       ancestry: ctx.ancestry ?? null,
+      systemContext: ctx.systemContext ?? null,
     })
 
     const sessionId = ctx.sessionState ?? ctx.heartbeatRunId
