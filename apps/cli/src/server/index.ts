@@ -2,7 +2,11 @@
  * Hono app factory — creates and configures the ShackleAI API server
  */
 
+import path from 'node:path'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
+import { serveStatic } from '@hono/node-server/serve-static'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Scheduler } from '@shackleai/core'
 import { companiesRouter } from './routes/companies.js'
@@ -41,6 +45,31 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', goalsRouter(db))
   app.route('/api/companies', projectsRouter(db))
   app.route('/api/companies', worktreesRouter(db))
+
+  // --- Serve dashboard static files ---
+  // Resolve dashboard dist relative to this file (works in monorepo and npm install)
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
+  const dashboardDist = path.resolve(__dirname, '..', '..', '..', '..', 'dashboard', 'dist')
+
+  if (fs.existsSync(dashboardDist)) {
+    // Serve static assets (JS, CSS, images)
+    app.use(
+      '/assets/*',
+      serveStatic({ root: dashboardDist, rewriteRequestPath: (p) => p }),
+    )
+
+    // Serve favicon
+    app.use(
+      '/favicon.svg',
+      serveStatic({ root: dashboardDist, rewriteRequestPath: () => '/favicon.svg' }),
+    )
+
+    // SPA fallback — serve index.html for all non-API routes
+    app.get('*', (c) => {
+      const html = fs.readFileSync(path.join(dashboardDist, 'index.html'), 'utf-8')
+      return c.html(html)
+    })
+  }
 
   return app
 }

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { DatabaseProvider, QueryResult } from './provider.js'
 
-const DEFAULT_DATA_DIR = join(homedir(), '.shackleai', 'data')
+const DEFAULT_DATA_DIR = join(homedir(), '.shackleai', 'orchestrator', 'data')
 
 export class PGliteProvider implements DatabaseProvider {
   private db: PGlite
