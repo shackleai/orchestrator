@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { Activity } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,11 +8,6 @@ import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { fetchActivity, type ActivityLogEntry } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 const entityTypeOptions = [
   { value: '', label: 'All entities' },
@@ -74,11 +69,12 @@ export function ActivityPage() {
   const { data: entries, isLoading, error } = useQuery<ActivityLogEntry[]>({
     queryKey: ['activity', companyId, entityType, fromDate, toDate],
     queryFn: () =>
-      fetchActivity(companyId, {
+      fetchActivity(companyId!, {
         entity_type: entityType || undefined,
         from: fromDate || undefined,
         to: toDate || undefined,
       }),
+    enabled: !!companyId,
   })
 
   return (

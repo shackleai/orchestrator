@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useParams, useSearchParams, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { ArrowLeft, Bot, Activity } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -14,11 +15,6 @@ import {
 } from '@/components/ui/table'
 import { fetchAgent, fetchHeartbeats, type Agent, type HeartbeatRun } from '@/lib/api'
 import { cn, formatCents, formatDate, formatRelativeTime } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
   active: 'success',
@@ -82,14 +78,14 @@ export function AgentDetailPage() {
     error: agentError,
   } = useQuery<Agent>({
     queryKey: ['agent', companyId, agentId],
-    queryFn: () => fetchAgent(companyId, agentId!),
-    enabled: !!agentId,
+    queryFn: () => fetchAgent(companyId!, agentId!),
+    enabled: !!companyId && !!agentId,
   })
 
   const { data: heartbeats, isLoading: heartbeatsLoading } = useQuery<HeartbeatRun[]>({
     queryKey: ['heartbeats', companyId, agentId],
-    queryFn: () => fetchHeartbeats(companyId, agentId!),
-    enabled: !!agentId,
+    queryFn: () => fetchHeartbeats(companyId!, agentId!),
+    enabled: !!companyId && !!agentId,
   })
 
   if (agentLoading) return <DetailSkeleton />

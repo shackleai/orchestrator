@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { DollarSign } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -22,11 +22,6 @@ import {
   type Company,
 } from '@/lib/api'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 function BudgetGauge({
   spent,
@@ -226,22 +221,26 @@ export function CostsPage() {
 
   const { data: dashboard, isLoading: dashLoading } = useQuery<DashboardData>({
     queryKey: ['dashboard', companyId],
-    queryFn: () => fetchDashboard(companyId),
+    queryFn: () => fetchDashboard(companyId!),
+    enabled: !!companyId,
   })
 
   const { data: company } = useQuery<Company>({
     queryKey: ['company', companyId],
-    queryFn: () => fetchCompany(companyId),
+    queryFn: () => fetchCompany(companyId!),
+    enabled: !!companyId,
   })
 
   const { data: byAgent, isLoading: agentLoading } = useQuery<CostByAgent[]>({
     queryKey: ['costs-by-agent', companyId],
-    queryFn: () => fetchCostsByAgent(companyId),
+    queryFn: () => fetchCostsByAgent(companyId!),
+    enabled: !!companyId,
   })
 
   const { data: events, isLoading: eventsLoading } = useQuery<CostEvent[]>({
     queryKey: ['cost-events', companyId],
-    queryFn: () => fetchCostEvents(companyId),
+    queryFn: () => fetchCostEvents(companyId!),
+    enabled: !!companyId,
   })
 
   const isLoading = dashLoading || agentLoading || eventsLoading

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { ListTodo } from 'lucide-react'
 import {
   Table,
@@ -15,11 +15,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { fetchTasks, type Issue } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 const statusOptions = [
   { value: '', label: 'All statuses' },
@@ -93,10 +88,11 @@ export function TasksPage() {
   const { data: tasks, isLoading, error } = useQuery<Issue[]>({
     queryKey: ['tasks', companyId, statusFilter, priorityFilter],
     queryFn: () =>
-      fetchTasks(companyId, {
+      fetchTasks(companyId!, {
         status: statusFilter || undefined,
         priority: priorityFilter || undefined,
       }),
+    enabled: !!companyId,
   })
 
   return (

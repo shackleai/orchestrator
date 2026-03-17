@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import {
   Bot,
   ListTodo,
@@ -12,11 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fetchDashboard, type DashboardData } from '@/lib/api'
 import { formatCents, formatRelativeTime } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 function StatCard({
   label,
@@ -101,7 +96,8 @@ export function OverviewPage() {
   const companyId = useCompanyId()
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ['dashboard', companyId],
-    queryFn: () => fetchDashboard(companyId),
+    queryFn: () => fetchDashboard(companyId!),
+    enabled: !!companyId,
   })
 
   if (isLoading) return <OverviewSkeleton />

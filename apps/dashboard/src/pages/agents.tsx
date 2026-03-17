@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { Bot } from 'lucide-react'
 import {
   Table,
@@ -13,11 +14,6 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { fetchAgents, type Agent } from '@/lib/api'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'secondary' | 'info'> = {
   active: 'success',
@@ -81,7 +77,8 @@ export function AgentsPage() {
   const navigate = useNavigate()
   const { data: agents, isLoading, error } = useQuery<Agent[]>({
     queryKey: ['agents', companyId],
-    queryFn: () => fetchAgents(companyId),
+    queryFn: () => fetchAgents(companyId!),
+    enabled: !!companyId,
   })
 
   if (isLoading) return <AgentsSkeleton />

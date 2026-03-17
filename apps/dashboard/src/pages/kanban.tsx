@@ -1,14 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { LayoutGrid } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fetchTasks, fetchAgents, type Issue, type Agent } from '@/lib/api'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 const COLUMNS = [
   { key: 'backlog', label: 'Backlog' },
@@ -109,12 +104,14 @@ export function KanbanPage() {
     error: tasksError,
   } = useQuery<Issue[]>({
     queryKey: ['tasks', companyId],
-    queryFn: () => fetchTasks(companyId),
+    queryFn: () => fetchTasks(companyId!),
+    enabled: !!companyId,
   })
 
   const { data: agents } = useQuery<Agent[]>({
     queryKey: ['agents', companyId],
-    queryFn: () => fetchAgents(companyId),
+    queryFn: () => fetchAgents(companyId!),
+    enabled: !!companyId,
   })
 
   const isLoading = tasksLoading

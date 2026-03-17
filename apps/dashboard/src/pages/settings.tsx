@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { Settings, Sparkles, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -10,11 +10,6 @@ import {
   type LicenseKey,
 } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 function SettingsSkeleton() {
   return (
@@ -106,12 +101,14 @@ export function SettingsPage() {
     error: companyError,
   } = useQuery<Company>({
     queryKey: ['company', companyId],
-    queryFn: () => fetchCompany(companyId),
+    queryFn: () => fetchCompany(companyId!),
+    enabled: !!companyId,
   })
 
   const { data: license, isLoading: licenseLoading } = useQuery<LicenseKey | null>({
     queryKey: ['license', companyId],
-    queryFn: () => fetchLicense(companyId),
+    queryFn: () => fetchLicense(companyId!),
+    enabled: !!companyId,
     staleTime: 5 * 60 * 1000,
   })
 

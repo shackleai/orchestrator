@@ -1,14 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useCompanyId } from '@/hooks/useCompanyId'
 import { Network } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fetchAgents, type Agent } from '@/lib/api'
-
-function useCompanyId() {
-  const [params] = useSearchParams()
-  return params.get('company') ?? 'default'
-}
 
 const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
   active: 'success',
@@ -155,7 +150,8 @@ export function OrgChartPage() {
     error,
   } = useQuery<Agent[]>({
     queryKey: ['agents', companyId],
-    queryFn: () => fetchAgents(companyId),
+    queryFn: () => fetchAgents(companyId!),
+    enabled: !!companyId,
   })
 
   if (isLoading) return <OrgChartSkeleton />
