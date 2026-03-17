@@ -12,6 +12,14 @@ import type {
   IssueComment,
 } from '@shackleai/shared'
 
+/** Full context chain from company mission down to the current task. */
+export interface GoalAncestry {
+  mission: string | null
+  project: { name: string; description: string | null } | null
+  goal: { name: string; description: string | null } | null
+  task: { title: string; description: string | null } | null
+}
+
 export interface AdapterContext {
   agentId: string
   companyId: string
@@ -27,6 +35,9 @@ export interface AdapterContext {
   assignedTasks?: Issue[]
   /** Comments on agent's tasks posted since this agent's last heartbeat. */
   unreadComments?: IssueComment[]
+
+  /** Full ancestry chain: mission → project → goal → task. */
+  ancestry?: GoalAncestry
 }
 
 export interface AdapterResult {

@@ -82,6 +82,7 @@ export class McpAdapter implements AdapterModule {
           heartbeatRunId: ctx.heartbeatRunId,
           task: ctx.task ?? null,
           sessionState: ctx.sessionState ?? null,
+          ancestry: ctx.ancestry ?? null,
         },
       }
 

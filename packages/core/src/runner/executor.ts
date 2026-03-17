@@ -33,7 +33,7 @@ import {
 import type { CostTracker } from '../cost-tracker.js'
 import type { Observatory } from '../observatory.js'
 import type { AdapterRegistry } from '../adapters/index.js'
-import type { AdapterContext, AdapterResult } from '../adapters/index.js'
+import type { AdapterContext, AdapterResult, GoalAncestry } from '../adapters/index.js'
 import { getLastSessionState, saveSessionState } from '../adapters/index.js'
 import type { RunnerResult } from '../scheduler.js'
 
@@ -55,6 +55,23 @@ interface AgentRow {
 interface TaskRow {
   id: string
   title: string
+  description: string | null
+  goal_id: string | null
+  project_id: string | null
+}
+
+interface GoalRow {
+  name: string
+  description: string | null
+}
+
+interface ProjectRow {
+  name: string
+  description: string | null
+}
+
+interface CompanyMissionRow {
+  description: string | null
 }
 
 export class HeartbeatExecutor {
@@ -156,11 +173,13 @@ export class HeartbeatExecutor {
 
       // Build agent communication context (async awareness)
       const lastHeartbeat = agent.last_heartbeat_at ?? null
-      const [recentActivity, assignedTasks, unreadComments] = await Promise.all([
-        this.getRecentActivity(companyId, lastHeartbeat),
-        this.getAssignedTasks(agentId),
-        this.getUnreadComments(agentId, lastHeartbeat),
-      ])
+      const [recentActivity, assignedTasks, unreadComments, ancestry] =
+        await Promise.all([
+          this.getRecentActivity(companyId, lastHeartbeat),
+          this.getAssignedTasks(agentId),
+          this.getUnreadComments(agentId, lastHeartbeat),
+          this.resolveAncestry(companyId, task),
+        ])
 
       const ctx: AdapterContext = {
         agentId,
@@ -173,6 +192,7 @@ export class HeartbeatExecutor {
         recentActivity,
         assignedTasks,
         unreadComments,
+        ancestry,
       }
 
       // Mark run as running
@@ -340,13 +360,82 @@ export class HeartbeatExecutor {
 
   private async getAssignedTask(agentId: string): Promise<TaskRow | null> {
     const result = await this.db.query<TaskRow>(
-      `SELECT id, title FROM issues
+      `SELECT id, title, description, goal_id, project_id FROM issues
        WHERE assignee_agent_id = $1 AND status = 'in_progress'
        ORDER BY created_at DESC
        LIMIT 1`,
       [agentId],
     )
     return result.rows[0] ?? null
+  }
+
+  /**
+   * Resolve the full ancestry chain for a task: mission → project → goal → task.
+   * Returns null if no task is assigned.
+   */
+  private async resolveAncestry(
+    companyId: string,
+    task: TaskRow | null,
+  ): Promise<GoalAncestry | undefined> {
+    if (!task) return undefined
+
+    // Fetch mission from the company
+    const companyResult = await this.db.query<CompanyMissionRow>(
+      `SELECT description FROM companies WHERE id = $1`,
+      [companyId],
+    )
+    const mission = companyResult.rows[0]?.description ?? null
+
+    // Resolve goal if linked
+    let goal: GoalAncestry['goal'] = null
+
+    if (task.goal_id) {
+      const goalResult = await this.db.query<GoalRow>(
+        `SELECT title AS name, description FROM goals WHERE id = $1`,
+        [task.goal_id],
+      )
+      if (goalResult.rows[0]) {
+        goal = {
+          name: goalResult.rows[0].name,
+          description: goalResult.rows[0].description,
+        }
+      }
+    }
+
+    // Resolve project: prefer issue's project_id, fall back to project linked to goal
+    let project: GoalAncestry['project'] = null
+
+    if (task.project_id) {
+      const projectResult = await this.db.query<ProjectRow>(
+        `SELECT name, description FROM projects WHERE id = $1`,
+        [task.project_id],
+      )
+      if (projectResult.rows[0]) {
+        project = {
+          name: projectResult.rows[0].name,
+          description: projectResult.rows[0].description,
+        }
+      }
+    } else if (task.goal_id) {
+      // Fall back: find project linked to this goal
+      const projectResult = await this.db.query<ProjectRow>(
+        `SELECT name, description FROM projects WHERE goal_id = $1 LIMIT 1`,
+        [task.goal_id],
+      )
+      if (projectResult.rows[0]) {
+        project = {
+          name: projectResult.rows[0].name,
+          description: projectResult.rows[0].description,
+        }
+      }
+    }
+
+    return {
+      mission,
+      project,
+      goal,
+      task: { title: task.title, description: task.description },
+    }
   }
 
   /**

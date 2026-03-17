@@ -11,6 +11,8 @@ import { spawn } from 'node:child_process'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
 
+const IS_WIN = process.platform === 'win32'
+
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
 
@@ -84,6 +86,18 @@ export class ClaudeAdapter implements AdapterModule {
       }
     }
 
+    // Prepend ancestry context to the prompt if available
+    let fullPrompt = prompt
+    if (ctx.ancestry) {
+      const parts: string[] = []
+      if (ctx.ancestry.mission) parts.push(`Mission: ${ctx.ancestry.mission}`)
+      if (ctx.ancestry.project) parts.push(`Project: ${ctx.ancestry.project.name}`)
+      if (ctx.ancestry.goal) parts.push(`Goal: ${ctx.ancestry.goal.name}`)
+      if (parts.length > 0) {
+        fullPrompt = `Context: ${parts.join(' | ')}\n\n${prompt}`
+      }
+    }
+
     const model = ctx.adapterConfig.model as string | undefined
     const timeoutMs =
       typeof ctx.adapterConfig.timeout === 'number'
@@ -102,6 +116,16 @@ export class ClaudeAdapter implements AdapterModule {
       env.SHACKLEAI_TASK_ID = ctx.task
     }
 
+    if (ctx.ancestry?.mission) {
+      env.SHACKLEAI_MISSION = ctx.ancestry.mission
+    }
+    if (ctx.ancestry?.project) {
+      env.SHACKLEAI_PROJECT = ctx.ancestry.project.name
+    }
+    if (ctx.ancestry?.goal) {
+      env.SHACKLEAI_GOAL = ctx.ancestry.goal.name
+    }
+
     if (ctx.env.SHACKLEAI_API_KEY) {
       env.SHACKLEAI_API_KEY = ctx.env.SHACKLEAI_API_KEY
     }
@@ -114,7 +138,7 @@ export class ClaudeAdapter implements AdapterModule {
       env.CLAUDE_MODEL = model
     }
 
-    const args = ['--print', prompt]
+    const args = ['--print', fullPrompt]
     if (model) {
       args.unshift('--model', model)
     }
@@ -128,6 +152,7 @@ export class ClaudeAdapter implements AdapterModule {
       const child = spawn('claude', args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: IS_WIN,
       })
 
       child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
@@ -178,6 +203,7 @@ export class ClaudeAdapter implements AdapterModule {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const child = spawn('claude', ['--version'], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: IS_WIN,
       })
 
       child.stdout.on('data', () => {

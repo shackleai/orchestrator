@@ -114,13 +114,29 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
     return c.json({ data: result.rows[0] }, 201)
   })
 
-  // GET /api/companies/:id/issues/:issueId — issue detail
+  // GET /api/companies/:id/issues/:issueId — issue detail with ancestry
   app.get('/:id/issues/:issueId', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const issueId = c.req.param('issueId')
 
-    const result = await db.query<Issue>(
-      `SELECT * FROM issues WHERE id = $1 AND company_id = $2`,
+    const result = await db.query<
+      Issue & {
+        goal_name: string | null
+        goal_description: string | null
+        project_name: string | null
+        project_description: string | null
+        company_mission: string | null
+      }
+    >(
+      `SELECT i.*,
+              g.title AS goal_name, g.description AS goal_description,
+              p.name AS project_name, p.description AS project_description,
+              co.description AS company_mission
+       FROM issues i
+       LEFT JOIN goals g ON g.id = i.goal_id
+       LEFT JOIN projects p ON p.id = COALESCE(i.project_id, (SELECT pr.id FROM projects pr WHERE pr.goal_id = i.goal_id LIMIT 1))
+       LEFT JOIN companies co ON co.id = i.company_id
+       WHERE i.id = $1 AND i.company_id = $2`,
       [issueId, companyId],
     )
 
@@ -128,7 +144,22 @@ export function issuesRouter(db: DatabaseProvider): Hono<{ Variables: Variables 
       return c.json({ error: 'Issue not found' }, 404)
     }
 
-    return c.json({ data: result.rows[0] })
+    const row = result.rows[0]
+    const ancestry = {
+      mission: row.company_mission,
+      project: row.project_name
+        ? { name: row.project_name, description: row.project_description }
+        : null,
+      goal: row.goal_name
+        ? { name: row.goal_name, description: row.goal_description }
+        : null,
+      task: { title: row.title, description: row.description },
+    }
+
+    // Strip joined columns from the issue response
+    const { goal_name, goal_description, project_name, project_description, company_mission, ...issue } = row
+
+    return c.json({ data: { ...issue, ancestry } })
   })
 
   // PATCH /api/companies/:id/issues/:issueId — update status, priority, description, etc.

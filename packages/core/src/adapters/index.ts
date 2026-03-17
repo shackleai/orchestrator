@@ -2,7 +2,7 @@
  * Adapters module — adapter registry, interfaces, and built-in adapters.
  */
 
-export type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
+export type { AdapterContext, AdapterModule, AdapterResult, GoalAncestry } from './adapter.js'
 export { ProcessAdapter } from './process.js'
 export { HttpAdapter } from './http.js'
 export { ClaudeAdapter } from './claude.js'
