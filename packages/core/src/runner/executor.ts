@@ -176,12 +176,13 @@ export class HeartbeatExecutor {
 
       // Build agent communication context (async awareness)
       const lastHeartbeat = agent.last_heartbeat_at ?? null
-      const [recentActivity, assignedTasks, unreadComments, ancestry, systemContext] =
+      const [recentActivity, assignedTasks, unreadComments, ancestry, delegationCtx, systemContext] =
         await Promise.all([
           this.getRecentActivity(companyId, lastHeartbeat),
           this.getAssignedTasks(agentId),
           this.getUnreadComments(agentId, lastHeartbeat),
           this.resolveAncestry(companyId, task),
+          this.getDelegationContext(agentId, task),
           this.contextBuilder.build(agentId, companyId),
         ])
 
@@ -197,6 +198,8 @@ export class HeartbeatExecutor {
         assignedTasks,
         unreadComments,
         ancestry,
+        delegatedBy: delegationCtx?.delegatedBy,
+        subTasks: delegationCtx?.subTasks,
         systemContext,
       }
 
@@ -553,6 +556,43 @@ export class HeartbeatExecutor {
 
     // No previous heartbeat � return empty (no baseline to compare against)
     return []
+  }
+
+  /**
+   * Load delegation context for the current agent and task.
+   * - delegatedBy: agent ID of whoever assigned the parent issue (if task has parent_id)
+   * - subTasks: child issues where parent's assignee is this agent
+   */
+  private async getDelegationContext(
+    agentId: string,
+    task: TaskRow | null,
+  ): Promise<{ delegatedBy?: string; subTasks?: Array<{ id: string; title: string; status: string }> } | undefined> {
+    if (!task) return undefined
+
+    // Check if current task was delegated (has parent, and parent has a different assignee)
+    let delegatedBy: string | undefined
+    const parentResult = await this.db.query<{ assignee_agent_id: string | null; id: string }>(
+      `SELECT p.assignee_agent_id, p.id FROM issues p
+       JOIN issues c ON c.parent_id = p.id
+       WHERE c.id = $1 AND p.assignee_agent_id IS NOT NULL AND p.assignee_agent_id != $2`,
+      [task.id, agentId],
+    )
+    if (parentResult.rows.length > 0) {
+      delegatedBy = parentResult.rows[0].assignee_agent_id ?? undefined
+    }
+
+    // Load child tasks this agent delegated (issues where this agent is assignee of parent)
+    const childResult = await this.db.query<{ id: string; title: string; status: string }>(
+      `SELECT c.id, c.title, c.status FROM issues c
+       JOIN issues p ON c.parent_id = p.id
+       WHERE p.assignee_agent_id = $1
+       ORDER BY c.created_at ASC`,
+      [agentId],
+    )
+    const subTasks = childResult.rows.length > 0 ? childResult.rows : undefined
+
+    if (!delegatedBy && !subTasks) return undefined
+    return { delegatedBy, subTasks }
   }
 
   private executeWithTimeout<T>(

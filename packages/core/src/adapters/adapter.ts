@@ -39,6 +39,11 @@ export interface AdapterContext {
   /** Full ancestry chain: mission → project → goal → task. */
   ancestry?: GoalAncestry
 
+  /** Agent ID that delegated the current task to this agent. */
+  delegatedBy?: string
+  /** Child tasks created by this agent via delegation. */
+  subTasks?: Array<{ id: string; title: string; status: string }>
+
   /** Structured system context built by ContextBuilder (Markdown). */
   systemContext?: string
 }

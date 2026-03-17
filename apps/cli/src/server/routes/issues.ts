@@ -5,9 +5,10 @@
 import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Issue, IssueComment } from '@shackleai/shared'
-import { CreateIssueInput, UpdateIssueInput, CreateIssueCommentInput } from '@shackleai/shared'
+import { CreateIssueInput, UpdateIssueInput, CreateIssueCommentInput, DelegateIssueInput } from '@shackleai/shared'
 import { IssueStatus, TriggerType } from '@shackleai/shared'
 import type { Scheduler } from '@shackleai/core'
+import { DelegationService, DelegationError, rollUpParentStatus } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 import { parsePagination } from '../pagination.js'
@@ -223,7 +224,13 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       void scheduler.triggerNow(newAssignee, TriggerType.TaskAssigned)
     }
 
-    return c.json({ data: result.rows[0] })
+    // Roll up parent status when a child issue is marked done
+    const updatedIssue = result.rows[0]
+    if (updatedIssue.status === IssueStatus.Done && updatedIssue.parent_id) {
+      void rollUpParentStatus(db, updatedIssue.parent_id)
+    }
+
+    return c.json({ data: updatedIssue })
   })
 
   // POST /api/companies/:id/issues/:issueId/checkout — atomic claim
@@ -368,6 +375,49 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     )
 
     return c.json({ data: result.rows })
+  })
+
+  // POST /api/companies/:id/issues/:issueId/delegate — delegate to a direct report
+  app.post('/:id/issues/:issueId/delegate', companyScope, async (c) => {
+    const companyId = c.req.param('id')!
+    const issueId = c.req.param('issueId')!
+
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
+
+    const parsed = DelegateIssueInput.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400)
+    }
+
+    const { from_agent_id, to_agent_id, sub_tasks } = parsed.data
+    const delegationService = new DelegationService(db)
+
+    try {
+      const childIds = await delegationService.delegate(
+        companyId,
+        from_agent_id,
+        issueId,
+        to_agent_id,
+        sub_tasks,
+      )
+
+      // Trigger the delegatee agent
+      if (scheduler) {
+        void scheduler.triggerNow(to_agent_id, TriggerType.Delegated)
+      }
+
+      return c.json({ data: { delegated: true, child_issue_ids: childIds } }, 201)
+    } catch (err) {
+      if (err instanceof DelegationError) {
+        return c.json({ error: err.message }, 403)
+      }
+      throw err
+    }
   })
 
   return app

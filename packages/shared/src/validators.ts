@@ -129,6 +129,20 @@ export const UpdateIssueInput = z.object({
 })
 export type UpdateIssueInput = z.infer<typeof UpdateIssueInput>
 
+export const DelegateIssueInput = z.object({
+  from_agent_id: uuid,
+  to_agent_id: uuid,
+  sub_tasks: z
+    .array(
+      z.object({
+        title: nonEmpty,
+        description: z.string().nullable().optional(),
+      }),
+    )
+    .min(1),
+})
+export type DelegateIssueInput = z.infer<typeof DelegateIssueInput>
+
 // ---------------------------------------------------------------------------
 // Goal
 // ---------------------------------------------------------------------------
