@@ -20,6 +20,7 @@ import { activityRouter } from './routes/activity.js'
 import { goalsRouter } from './routes/goals.js'
 import { projectsRouter } from './routes/projects.js'
 import { worktreesRouter } from './routes/worktrees.js'
+import { toolCallsRouter } from './routes/tool-calls.js'
 
 import { VERSION } from '../index.js'
 
@@ -37,7 +38,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', companiesRouter(db))
   app.route('/api/companies', dashboardRouter(db))
   app.route('/api/companies', agentsRouter(db, options?.scheduler))
-  app.route('/api/companies', issuesRouter(db))
+  app.route('/api/companies', issuesRouter(db, options?.scheduler))
   app.route('/api/companies', policiesRouter(db))
   app.route('/api/companies', costsRouter(db))
   app.route('/api/companies', heartbeatsRouter(db))
@@ -45,6 +46,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', goalsRouter(db))
   app.route('/api/companies', projectsRouter(db))
   app.route('/api/companies', worktreesRouter(db))
+  app.route('/api/companies', toolCallsRouter(db))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)

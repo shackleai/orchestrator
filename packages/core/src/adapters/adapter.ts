@@ -52,6 +52,13 @@ export interface AdapterResult {
     model: string
     provider: string
   }
+  toolCalls?: Array<{
+    toolName: string
+    toolInput?: Record<string, unknown>
+    toolOutput?: string
+    durationMs?: number
+    status?: 'success' | 'error'
+  }>
 }
 
 export interface AdapterModule {
