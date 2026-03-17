@@ -49,7 +49,8 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)
   const __dirname = path.dirname(fileURLToPath(import.meta.url))
-  const dashboardDist = path.resolve(__dirname, '..', '..', '..', '..', 'dashboard', 'dist')
+  // From dist/server/ → ../../ = apps/cli/ → ../dashboard/dist = apps/dashboard/dist
+  const dashboardDist = path.resolve(__dirname, '..', '..', '..', 'dashboard', 'dist')
 
   if (fs.existsSync(dashboardDist)) {
     // Serve static assets (JS, CSS, images)
