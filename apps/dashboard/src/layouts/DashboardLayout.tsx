@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { UpgradeBanner } from '@/components/UpgradeBanner'
 import { LicenseStatus } from '@/components/LicenseStatus'
+import { CompanySelector } from '@/components/CompanySelector'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
@@ -64,6 +65,11 @@ export function DashboardLayout() {
           >
             <X className="h-4 w-4" />
           </Button>
+        </div>
+
+        {/* Company selector */}
+        <div className="border-b border-border px-3 py-2">
+          <CompanySelector />
         </div>
 
         {/* Nav */}
