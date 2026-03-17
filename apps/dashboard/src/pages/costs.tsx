@@ -99,6 +99,100 @@ function AgentCostBar({
   )
 }
 
+interface DailySpend {
+  date: string
+  totalCents: number
+}
+
+function groupByDate(events: CostEvent[] | undefined): DailySpend[] {
+  if (!events || events.length === 0) return []
+  const map = new Map<string, number>()
+  for (const ev of events) {
+    const date = ev.occurred_at.slice(0, 10) // YYYY-MM-DD
+    map.set(date, (map.get(date) ?? 0) + ev.cost_cents)
+  }
+  return Array.from(map.entries())
+    .map(([date, totalCents]) => ({ date, totalCents }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-14) // Last 14 days
+}
+
+function DailySpendChart({ events }: { events: CostEvent[] | undefined }) {
+  const dailyData = groupByDate(events)
+  if (dailyData.length === 0) return null
+
+  const maxCost = Math.max(...dailyData.map((d) => d.totalCents), 1)
+  const chartHeight = 160
+  const barWidth = Math.max(12, Math.floor(600 / dailyData.length) - 4)
+  const svgWidth = dailyData.length * (barWidth + 4) + 8
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Daily Spend Trend</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <svg
+            width={svgWidth}
+            height={chartHeight + 32}
+            viewBox={`0 0 ${svgWidth} ${chartHeight + 32}`}
+            role="img"
+            aria-label="Daily spend bar chart"
+            className="min-w-full"
+          >
+            {dailyData.map((day, i) => {
+              const barHeight = Math.max(
+                (day.totalCents / maxCost) * chartHeight,
+                2,
+              )
+              const x = i * (barWidth + 4) + 4
+              const y = chartHeight - barHeight
+
+              return (
+                <g key={day.date}>
+                  {/* Bar */}
+                  <rect
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={barHeight}
+                    rx={3}
+                    className="fill-amber"
+                  />
+                  {/* Cost label on hover area */}
+                  <title>
+                    {day.date}: {formatCents(day.totalCents)}
+                  </title>
+                  {/* Date label */}
+                  <text
+                    x={x + barWidth / 2}
+                    y={chartHeight + 16}
+                    textAnchor="middle"
+                    className="fill-muted-foreground"
+                    fontSize={9}
+                  >
+                    {day.date.slice(5)} {/* MM-DD */}
+                  </text>
+                </g>
+              )
+            })}
+            {/* Baseline */}
+            <line
+              x1={0}
+              y1={chartHeight}
+              x2={svgWidth}
+              y2={chartHeight}
+              className="stroke-border"
+              strokeWidth={1}
+            />
+          </svg>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function CostsSkeleton() {
   return (
     <div className="space-y-6">
@@ -221,6 +315,9 @@ export function CostsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Daily Spend Trend */}
+      <DailySpendChart events={events} />
 
       {/* Recent Cost Events */}
       <Card>
