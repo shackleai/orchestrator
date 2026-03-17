@@ -176,6 +176,12 @@ export interface LicenseKey {
   valid_until: string | null
 }
 
+// --- Company list fetcher ---
+
+export function fetchCompanies() {
+  return fetchJson<Company[]>(`${BASE_URL}/companies`)
+}
+
 // --- Cost fetchers ---
 
 export function fetchCostEvents(

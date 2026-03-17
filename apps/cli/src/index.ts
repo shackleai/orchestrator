@@ -15,6 +15,8 @@ import { registerUpgradeCommand } from './commands/upgrade.js'
 import { registerWorktreeCommand } from './commands/worktree.js'
 import { registerGoalCommand } from './commands/goal.js'
 import { registerProjectCommand } from './commands/project.js'
+import { registerCompanyCommand } from './commands/company.js'
+import { registerCommentCommand } from './commands/comment.js'
 
 export const VERSION = '0.1.0'
 
@@ -49,6 +51,8 @@ registerUpgradeCommand(program)
 registerWorktreeCommand(program)
 registerGoalCommand(program)
 registerProjectCommand(program)
+registerCompanyCommand(program)
+registerCommentCommand(program)
 
 // Only parse when run as CLI entrypoint — not when imported for VERSION etc.
 const isDirectRun =

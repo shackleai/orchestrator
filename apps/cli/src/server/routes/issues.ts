@@ -1,11 +1,11 @@
 /**
- * Issue CRUD + checkout + comments routes — /api/companies/:id/issues
+ * Issue CRUD + checkout + delegate routes — /api/companies/:id/issues
  */
 
 import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { Issue, IssueComment } from '@shackleai/shared'
-import { CreateIssueInput, UpdateIssueInput, CreateIssueCommentInput, DelegateIssueInput } from '@shackleai/shared'
+import type { Issue } from '@shackleai/shared'
+import { CreateIssueInput, UpdateIssueInput, DelegateIssueInput } from '@shackleai/shared'
 import { IssueStatus, TriggerType } from '@shackleai/shared'
 import type { Scheduler } from '@shackleai/core'
 import { DelegationService, DelegationError, rollUpParentStatus } from '@shackleai/core'
@@ -164,7 +164,7 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     }
 
     // Strip joined columns from the issue response
-    const { goal_name, goal_description, project_name, project_description, company_mission, ...issue } = row
+    const { goal_name: _goal_name, goal_description: _goal_description, project_name: _project_name, project_description: _project_description, company_mission: _company_mission, ...issue } = row
 
     return c.json({ data: { ...issue, ancestry } })
   })
@@ -297,84 +297,6 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     }
 
     return c.json({ data: result.rows[0] })
-  })
-
-  // POST /api/companies/:id/issues/:issueId/comments — add comment
-  app.post('/:id/issues/:issueId/comments', companyScope, async (c) => {
-    const companyId = c.req.param('id')
-    const issueId = c.req.param('issueId')
-
-    // Verify issue belongs to company
-    const existing = await db.query<Issue>(
-      `SELECT id FROM issues WHERE id = $1 AND company_id = $2`,
-      [issueId, companyId],
-    )
-    if (existing.rows.length === 0) {
-      return c.json({ error: 'Issue not found' }, 404)
-    }
-
-    let body: unknown
-    try {
-      body = await c.req.json()
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400)
-    }
-
-    const parsed = CreateIssueCommentInput.safeParse({ issue_id: issueId, ...(body as object) })
-    if (!parsed.success) {
-      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400)
-    }
-
-    const { content, author_agent_id, parent_id, is_resolved } = parsed.data
-
-    const result = await db.query<IssueComment>(
-      `INSERT INTO issue_comments (issue_id, author_agent_id, content, parent_id, is_resolved)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [issueId, author_agent_id ?? null, content, parent_id ?? null, is_resolved],
-    )
-
-    // Trigger mentioned agents — scan for @agent-name patterns
-    if (scheduler) {
-      const mentions = content.match(/@([\w-]+)/g)
-      if (mentions) {
-        const uniqueNames = [...new Set(mentions.map((m) => m.slice(1)))]
-        for (const agentName of uniqueNames) {
-          const agentResult = await db.query<{ id: string }>(
-            `SELECT id FROM agents WHERE company_id = $1 AND name = $2`,
-            [companyId, agentName],
-          )
-          if (agentResult.rows.length > 0) {
-            void scheduler.triggerNow(agentResult.rows[0].id, TriggerType.Mentioned)
-          }
-        }
-      }
-    }
-
-    return c.json({ data: result.rows[0] }, 201)
-  })
-
-  // GET /api/companies/:id/issues/:issueId/comments — list comments ordered by created_at
-  app.get('/:id/issues/:issueId/comments', companyScope, async (c) => {
-    const companyId = c.req.param('id')
-    const issueId = c.req.param('issueId')
-
-    // Verify issue belongs to company
-    const existing = await db.query<Issue>(
-      `SELECT id FROM issues WHERE id = $1 AND company_id = $2`,
-      [issueId, companyId],
-    )
-    if (existing.rows.length === 0) {
-      return c.json({ error: 'Issue not found' }, 404)
-    }
-
-    const { limit, offset } = parsePagination(c)
-    const result = await db.query<IssueComment>(
-      `SELECT * FROM issue_comments WHERE issue_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`,
-      [issueId, limit, offset],
-    )
-
-    return c.json({ data: result.rows })
   })
 
   // POST /api/companies/:id/issues/:issueId/delegate — delegate to a direct report

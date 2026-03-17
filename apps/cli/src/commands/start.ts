@@ -20,17 +20,24 @@ import {
   CrewAIAdapter,
 } from '@shackleai/core'
 import { readConfig, writeConfig } from '../config.js'
+import type { ShackleAIConfig } from '../config.js'
 import { createApp } from '../server/index.js'
 import { VERSION } from '../index.js'
 
 export async function startCommand(options: { port: number }): Promise<void> {
-  const config = await readConfig()
+  let config = await readConfig()
 
   if (!config) {
-    console.error(
-      'No configuration found. Run `shackleai init` first to set up.',
-    )
-    process.exit(1)
+    // Auto-init from env vars — supports Docker deployments without interactive `init`
+    const companyName = process.env.SHACKLEAI_COMPANY_NAME
+    if (companyName) {
+      config = await autoInitFromEnv(companyName)
+    } else {
+      console.error(
+        'No configuration found. Run `shackleai init` first to set up.',
+      )
+      process.exit(1)
+    }
   }
 
   // Initialize DB
@@ -114,6 +121,87 @@ export async function startCommand(options: { port: number }): Promise<void> {
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
+}
+
+/**
+ * Auto-initialize orchestrator from environment variables.
+ * Used for Docker deployments where interactive `shackleai init` is not possible.
+ *
+ * Required env vars:
+ *   SHACKLEAI_COMPANY_NAME — company name (required)
+ *
+ * Optional env vars:
+ *   SHACKLEAI_MODE         — "local" (default) or "server"
+ *   SHACKLEAI_DATABASE_URL — PostgreSQL URL (required when mode=server)
+ */
+async function autoInitFromEnv(companyName: string): Promise<ShackleAIConfig> {
+  console.log(`  Auto-initializing from environment variables...`)
+
+  const mode = (process.env.SHACKLEAI_MODE ?? 'local') as 'local' | 'server'
+  const databaseUrl = process.env.SHACKLEAI_DATABASE_URL
+
+  if (mode === 'server' && !databaseUrl) {
+    console.error(
+      'SHACKLEAI_DATABASE_URL is required when SHACKLEAI_MODE=server.',
+    )
+    process.exit(1)
+  }
+
+  let db: DatabaseProvider
+  if (mode === 'local') {
+    db = new PGliteProvider('default')
+  } else {
+    db = new PgProvider(databaseUrl!)
+  }
+
+  await runMigrations(db)
+
+  const issuePrefix = companyName
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 5)
+
+  let companyId: string
+  try {
+    const result = await db.query<{ id: string }>(
+      `INSERT INTO companies (name, issue_prefix)
+       VALUES ($1, $2)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [companyName.trim(), issuePrefix || 'MAIN'],
+    )
+    companyId = result.rows[0].id
+  } catch (err) {
+    // Company may already exist — fetch it
+    const existing = await db.query<{ id: string }>(
+      `SELECT id FROM companies WHERE name = $1`,
+      [companyName.trim()],
+    )
+    if (existing.rows.length > 0) {
+      companyId = existing.rows[0].id
+    } else {
+      console.error(
+        `Failed to create company: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      await db.close()
+      process.exit(1)
+    }
+  }
+
+  await db.close()
+
+  const config: ShackleAIConfig = {
+    mode,
+    companyId,
+    companyName: companyName.trim(),
+    ...(databaseUrl ? { databaseUrl } : {}),
+    ...(mode === 'local' ? { dataDir: 'default' } : {}),
+  }
+
+  await writeConfig(config)
+  console.log(`  Initialized company "${companyName.trim()}" (${companyId})`)
+  return config
 }
 
 /** Check if a port is available by trying to listen on it */
