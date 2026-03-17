@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build: .
+    ports:
+      - "4800:4800"
+    volumes:
+      - shackleai-data:/root/.shackleai
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+  # Optional: external PostgreSQL for server mode
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: shackleai
+      POSTGRES_USER: shackleai
+      POSTGRES_PASSWORD: shackleai
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    profiles:
+      - server
+
+volumes:
+  shackleai-data:
+  pg-data:
