@@ -175,6 +175,19 @@ export interface AgentCommunicationContext {
   unreadComments: IssueComment[]
 }
 
+export interface ToolCall {
+  id: string
+  heartbeat_run_id: string
+  agent_id: string
+  company_id: string
+  tool_name: string
+  tool_input: Record<string, unknown> | null
+  tool_output: string | null
+  duration_ms: number | null
+  status: string
+  created_at: Date
+}
+
 export interface AgentWorktree {
   id: string
   agent_id: string
