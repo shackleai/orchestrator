@@ -32,6 +32,7 @@ import { inboxRouter } from './routes/inbox.js'
 import { templatesRouter, companyTemplatesRouter } from './routes/templates.js'
 import { attachmentsRouter } from './routes/attachments.js'
 import { assetsRouter, assetServeRouter } from './routes/assets.js'
+import { companyLogoRouter } from './routes/company-logo.js'
 import { workProductsRouter } from './routes/work-products.js'
 import { workspaceOperationsRouter } from './routes/workspace-operations.js'
 import { financeRouter } from './routes/finance.js'
@@ -111,6 +112,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   if (options?.storage) {
     app.route('/api/companies', attachmentsRouter(db, options.storage))
     app.route('/api/companies', assetsRouter(db, options.storage))
+    app.route('/api/companies', companyLogoRouter(db, options.storage))
     app.route('/api/assets', assetServeRouter(db, options.storage))
   }
   app.route('/api/companies', workProductsRouter(db))
