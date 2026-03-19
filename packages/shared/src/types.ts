@@ -561,3 +561,47 @@ export interface WorkspaceOperation {
   created_at: Date
 }
 
+// ---------------------------------------------------------------------------
+// WebSocket Real-Time Events
+// ---------------------------------------------------------------------------
+
+/** Event types broadcast over WebSocket to connected dashboard clients. */
+export type WebSocketEventType =
+  | 'heartbeat_start'
+  | 'heartbeat_end'
+  | 'agent_status_change'
+  | 'tool_call'
+  | 'cost_event'
+  | 'task_update'
+
+/** A typed WebSocket message sent from server to client. */
+export interface WebSocketEvent {
+  type: WebSocketEventType
+  companyId: string
+  timestamp: string
+  payload: Record<string, unknown>
+}
+
+/** Client-to-server subscribe message. */
+export interface WebSocketSubscribeMessage {
+  action: 'subscribe'
+  companyId: string
+  token: string
+}
+
+/** Client-to-server unsubscribe message. */
+export interface WebSocketUnsubscribeMessage {
+  action: 'unsubscribe'
+}
+
+/** Client-to-server ping message for keepalive. */
+export interface WebSocketPingMessage {
+  action: 'ping'
+}
+
+/** Union of all client-to-server messages. */
+export type WebSocketClientMessage =
+  | WebSocketSubscribeMessage
+  | WebSocketUnsubscribeMessage
+  | WebSocketPingMessage
+

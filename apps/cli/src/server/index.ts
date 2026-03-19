@@ -10,6 +10,7 @@ import { cors } from 'hono/cors'
 import { serveStatic } from '@hono/node-server/serve-static'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Scheduler, StorageProvider } from '@shackleai/core'
+import type { WebSocketManager } from './realtime/index.js'
 import { companiesRouter } from './routes/companies.js'
 import { dashboardRouter } from './routes/dashboard.js'
 import { agentsRouter } from './routes/agents.js'
@@ -33,7 +34,6 @@ import { templatesRouter, companyTemplatesRouter } from './routes/templates.js'
 import { attachmentsRouter } from './routes/attachments.js'
 import { assetsRouter, assetServeRouter } from './routes/assets.js'
 import { workProductsRouter } from './routes/work-products.js'
-import { workspaceOperationsRouter } from './routes/workspace-operations.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
@@ -42,6 +42,8 @@ export interface CreateAppOptions {
   scheduler?: Scheduler
   /** Pluggable file storage backend for attachments. */
   storage?: StorageProvider
+  /** WebSocket manager for real-time event broadcasting. */
+  wsManager?: WebSocketManager
   /** Skip API authentication — for testing only. NEVER set in production. */
   skipAuth?: boolean
 }
@@ -75,11 +77,20 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
     return c.json({ status: 'ok', version: VERSION })
   })
 
+  // --- WebSocket status — unauthenticated ---
+  app.get('/api/ws/status', (c) => {
+    const wsManager = options?.wsManager
+    if (!wsManager) {
+      return c.json({ enabled: false, connections: 0 })
+    }
+    return c.json({ enabled: true, connections: wsManager.getConnectionCount() })
+  })
+
   // --- Global API authentication — protects all /api/* routes except /api/health ---
   if (!options?.skipAuth) {
     const apiAuthMiddleware = createApiAuth(db)
     app.use('/api/*', async (c, next) => {
-      if (c.req.path === '/api/health') {
+      if (c.req.path === '/api/health' || c.req.path === '/api/ws/status') {
         return next()
       }
       return apiAuthMiddleware(c, next)
@@ -113,8 +124,6 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   }
   app.route('/api/companies', workProductsRouter(db))
   app.route('/api/companies', documentsRouter(db))
-  app.route('/api/companies', workspaceOperationsRouter(db))
-
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)
   const __dirname = path.dirname(fileURLToPath(import.meta.url))

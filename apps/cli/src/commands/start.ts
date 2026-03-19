@@ -27,6 +27,7 @@ import { AgentApiKeyStatus } from '@shackleai/shared'
 import { readConfig, writeConfig, resolveDatabaseUrl } from '../config.js'
 import type { ShackleAIConfig } from '../config.js'
 import { createApp } from '../server/index.js'
+import { WebSocketManager } from '../server/realtime/index.js'
 import { VERSION } from '../index.js'
 
 export async function startCommand(options: { port: number }): Promise<void> {
@@ -113,7 +114,15 @@ export async function startCommand(options: { port: number }): Promise<void> {
   // Storage provider for file attachments (defaults to local disk)
   const storage = createStorageProvider({ type: 'local-disk' })
 
-  const app = createApp(db, { scheduler, storage })
+  // WebSocket manager for real-time event broadcasting
+  const wsManager = new WebSocketManager(db)
+
+  // Wire WebSocket broadcasts into the executor
+  executor.setBroadcast((companyId, type, payload) => {
+    wsManager.broadcast(companyId, type, payload)
+  })
+
+  const app = createApp(db, { scheduler, storage, wsManager })
 
   // Find an available port — try requested port first, then auto-increment
   const requestedPort = options.port
@@ -133,11 +142,22 @@ export async function startCommand(options: { port: number }): Promise<void> {
 
   Dashboard: http://127.0.0.1:${port}
   Health:    http://127.0.0.1:${port}/api/health
+  WebSocket: ws://127.0.0.1:${port}/ws
 
   Press Ctrl+C to stop.
   `)
 
-  serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+  const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+
+  // Handle WebSocket upgrade requests on /ws path
+  server.on('upgrade', (request: import('node:http').IncomingMessage, socket: import('node:stream').Duplex, head: Buffer) => {
+    const url = new URL(request.url ?? '/', `http://${request.headers.host}`)
+    if (url.pathname === '/ws') {
+      wsManager.handleUpgrade(request, socket as import('node:net').Socket, head)
+    } else {
+      socket.destroy()
+    }
+  })
 
   // Prevent stdin from keeping the process waiting for input on Windows
   if (process.stdin.isTTY) {
@@ -152,6 +172,7 @@ export async function startCommand(options: { port: number }): Promise<void> {
   // Graceful shutdown on Ctrl+C
   const shutdown = () => {
     console.log('\n  Shutting down ShackleAI Orchestrator...')
+    wsManager.close()
     scheduler.stop()
     db!.close().catch(() => {})
     process.exit(0)

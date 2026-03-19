@@ -55,6 +55,10 @@
     "@shackleai/shared": "workspace:*",
     "commander": "^13.1.0",
     "hono": "^4.7.10",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
   }
 }
