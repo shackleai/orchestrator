@@ -566,22 +566,33 @@ export class HeartbeatExecutor {
     toolCalls: NonNullable<AdapterResult['toolCalls']>,
   ): Promise<void> {
     try {
+      // Batch INSERT: single query with multiple VALUES rows to avoid N+1
+      const valueClauses: string[] = []
+      const params: unknown[] = []
+      let idx = 1
+
       for (const tc of toolCalls) {
-        await this.db.query(
-          `INSERT INTO tool_calls (heartbeat_run_id, agent_id, company_id, tool_name, tool_input, tool_output, duration_ms, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [
-            runId,
-            agentId,
-            companyId,
-            tc.toolName,
-            tc.toolInput ? JSON.stringify(tc.toolInput) : null,
-            tc.toolOutput ?? null,
-            tc.durationMs ?? null,
-            tc.status ?? 'success',
-          ],
+        valueClauses.push(
+          `($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7})`,
         )
+        params.push(
+          runId,
+          agentId,
+          companyId,
+          tc.toolName,
+          tc.toolInput ? JSON.stringify(tc.toolInput) : null,
+          tc.toolOutput ?? null,
+          tc.durationMs ?? null,
+          tc.status ?? 'success',
+        )
+        idx += 8
       }
+
+      await this.db.query(
+        `INSERT INTO tool_calls (heartbeat_run_id, agent_id, company_id, tool_name, tool_input, tool_output, duration_ms, status)
+         VALUES ${valueClauses.join(', ')}`,
+        params,
+      )
     } catch {
       // Best-effort — don't let tool call logging fail the heartbeat
     }

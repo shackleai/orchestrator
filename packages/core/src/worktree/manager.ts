@@ -226,7 +226,8 @@ export class WorktreeManager {
     const { stdout } = await git(['worktree', 'list', '--porcelain'], repoPath)
     if (!stdout) return []
 
-    const entries: WorktreeInfo[] = []
+    // Parse all worktree blocks first
+    const parsed: Array<{ path: string; branch: string }> = []
     const blocks = stdout.split('\n\n')
 
     for (const block of blocks) {
@@ -239,31 +240,60 @@ export class WorktreeManager {
           path = line.slice('worktree '.length)
         }
         if (line.startsWith('branch ')) {
-          // refs/heads/branchname
           branch = line.slice('branch '.length).replace('refs/heads/', '')
         }
       }
 
       // Skip the main worktree (the repo itself)
       if (!path || !path.includes(WORKTREE_DIR)) continue
+      parsed.push({ path, branch })
+    }
 
-      // Look up DB record
-      const dbRecord = await this.getDbRecordByPath(path)
+    if (parsed.length === 0) return []
 
-      entries.push({
-        path,
-        branch,
+    // Batch DB lookup: single query for all worktree paths instead of N queries
+    const normalizedPaths = parsed.map((p) => {
+      const normalized = resolve(p.path)
+      return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+    })
+    const placeholders = normalizedPaths.map((_, i) => `$${i + 1}`).join(', ')
+    const dbResult = await this.db.query<AgentWorktree>(
+      process.platform === 'win32'
+        ? `SELECT * FROM agent_worktrees WHERE LOWER(worktree_path) IN (${placeholders})`
+        : `SELECT * FROM agent_worktrees WHERE worktree_path IN (${placeholders})`,
+      normalizedPaths,
+    )
+
+    // Index DB records by normalized path for O(1) lookup
+    const dbByPath = new Map<string, AgentWorktree>()
+    for (const row of dbResult.rows) {
+      const key = process.platform === 'win32'
+        ? resolve(row.worktree_path).toLowerCase()
+        : resolve(row.worktree_path)
+      dbByPath.set(key, row)
+    }
+
+    // Check dirty status in parallel instead of sequentially
+    const dirtyChecks = await Promise.all(
+      parsed.map((p) => this.checkDirty(p.path)),
+    )
+
+    const entries: WorktreeInfo[] = parsed.map((p, i) => {
+      const dbRecord = dbByPath.get(normalizedPaths[i])
+      return {
+        path: p.path,
+        branch: p.branch,
         baseBranch: dbRecord?.base_branch ?? 'main',
         agentId: dbRecord?.agent_id ?? 'unknown',
         companyId: dbRecord?.company_id ?? 'unknown',
         issueId: dbRecord?.issue_id ?? undefined,
         status: (dbRecord?.status as WorktreeInfo['status']) ?? 'active',
-        isDirty: await this.checkDirty(path),
+        isDirty: dirtyChecks[i],
         commitsAhead: 0,
         commitsBehind: 0,
         createdAt: dbRecord?.created_at ? new Date(dbRecord.created_at) : new Date(),
-      })
-    }
+      }
+    })
 
     return entries
   }
@@ -293,6 +323,28 @@ export class WorktreeManager {
       `SELECT * FROM agent_worktrees
        WHERE company_id = $1
        ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [companyId, limit, offset],
+    )
+    return result.rows
+  }
+
+
+  // -- List with agent names (JOIN, no N+1) ------------------------------
+
+  async listWithAgentNames(
+    companyId: string,
+    pagination?: { limit: number; offset: number },
+  ): Promise<Array<AgentWorktree & { agent_name: string | null }>> {
+    const limit = pagination?.limit ?? 100
+    const offset = pagination?.offset ?? 0
+
+    const result = await this.db.query<AgentWorktree & { agent_name: string | null }>(
+      `SELECT w.*, a.name AS agent_name
+       FROM agent_worktrees w
+       LEFT JOIN agents a ON a.id = w.agent_id
+       WHERE w.company_id = $1
+       ORDER BY w.created_at DESC
        LIMIT $2 OFFSET $3`,
       [companyId, limit, offset],
     )
