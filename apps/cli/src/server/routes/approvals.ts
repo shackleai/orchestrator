@@ -111,15 +111,22 @@ export function approvalsRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
         : approval.payload
 
       const agentResult = await db.query<Agent>(
-        `INSERT INTO agents (company_id, name, role, adapter_type, adapter_config)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO agents
+           (company_id, name, title, role, status, reports_to, capabilities,
+            adapter_type, adapter_config, budget_monthly_cents)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [
           companyId,
           payload.name ?? 'Unnamed Agent',
+          payload.title ?? null,
           payload.role ?? 'general',
+          payload.status ?? 'idle',
+          payload.reports_to ?? null,
+          payload.capabilities ?? null,
           payload.adapter_type ?? 'process',
           JSON.stringify(payload.adapter_config ?? {}),
+          payload.budget_monthly_cents ?? 0,
         ],
       )
       createdAgent = agentResult.rows[0]
