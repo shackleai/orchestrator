@@ -68,6 +68,8 @@ export {
   getTemplate,
   importTemplate,
   exportTemplate,
+  exportCompany,
+  importCompany,
   clearTemplateCache,
 } from './templates/index.js'
 export type { TemplateImportResult } from './templates/index.js'

@@ -380,3 +380,66 @@ export interface TemplateSummary {
   goal_count: number
   policy_count: number
 }
+
+// ---------------------------------------------------------------------------
+// Company Export/Import -- full portable company snapshots
+// ---------------------------------------------------------------------------
+
+/** A project definition within an export -- no IDs, uses agent/goal names. */
+export interface ExportProject {
+  name: string
+  description?: string | null
+  status: string
+  target_date?: string | null
+  /** Name of the goal this project is linked to (resolved at import time). */
+  goal_title?: string | null
+  /** Name of the lead agent (resolved at import time). */
+  lead_agent_name?: string | null
+}
+
+/** An issue definition within an export -- no IDs, uses name-based references. */
+export interface ExportIssue {
+  title: string
+  description?: string | null
+  status: string
+  priority: string
+  /** Name of the assigned agent (resolved at import time). */
+  assignee_agent_name?: string | null
+  /** Name of the project this issue belongs to (resolved at import time). */
+  project_name?: string | null
+  /** Title of the goal this issue is linked to (resolved at import time). */
+  goal_title?: string | null
+  /** Title of the parent issue (resolved at import time). */
+  parent_issue_title?: string | null
+}
+
+/**
+ * A full company export -- portable, ID-free snapshot of all company structure.
+ * Extends CompanyTemplate with projects and issues.
+ * All UUIDs, timestamps, cost_events, and heartbeat_runs are scrubbed.
+ */
+export interface CompanyExport extends CompanyTemplate {
+  /** Export format identifier. */
+  export_version: string
+  /** Company metadata. */
+  company: {
+    name: string
+    description?: string | null
+    issue_prefix: string
+    budget_monthly_cents: number
+    default_honesty_checklist?: string[] | null
+    require_approval: boolean
+  }
+  projects: ExportProject[]
+  issues: ExportIssue[]
+}
+
+/** Result of importing a company export. */
+export interface CompanyImportResult {
+  company: Company
+  agents_created: number
+  goals_created: number
+  policies_created: number
+  projects_created: number
+  issues_created: number
+}
