@@ -1,15 +1,18 @@
 /**
- * Template routes — /api/templates and /api/companies/:id/import-template, /api/companies/:id/export-template
+ * Template and company export/import routes — /api/templates and /api/companies/:id/import-template, /api/companies/:id/export-template
  */
 
 import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
-import { CompanyTemplateInput } from '@shackleai/shared'
+import { CompanyTemplateInput, CompanyExportInput } from '@shackleai/shared'
+import type { CompanyExport } from '@shackleai/shared'
 import {
   listTemplates,
   getTemplate,
   importTemplate,
   exportTemplate,
+  exportCompany,
+  importCompany,
 } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
@@ -122,6 +125,49 @@ export function companyTemplatesRouter(
     const template = await exportTemplate(db, companyId as string, name, description)
 
     return c.json({ data: template })
+  })
+
+
+  // POST /api/companies/:id/export -- export full company state as JSON
+  app.post("/:id/export", companyScope, async (c) => {
+    const companyId = c.req.param("id")
+
+    try {
+      const data = await exportCompany(db, companyId as string)
+      return c.json({ data })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Export failed"
+      return c.json({ error: message }, 500)
+    }
+  })
+
+
+  // POST /api/companies/import -- import a full company export JSON
+  app.post("/import", async (c) => {
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400)
+    }
+
+    const parsed = CompanyExportInput.safeParse(body)
+    if (!parsed.success) {
+      return c.json(
+        { error: "Validation failed", details: parsed.error.flatten() },
+        400,
+      )
+    }
+
+    try {
+      const result = await importCompany(db, parsed.data as CompanyExport)
+      return c.json({ data: result }, 201)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Import failed"
+      // Name collision returns 409 Conflict
+      const status = message.includes("already exists") ? 409 : 500
+      return c.json({ error: message }, status)
+    }
   })
 
   return app

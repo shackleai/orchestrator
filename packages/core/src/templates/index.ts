@@ -9,10 +9,15 @@
 import type { DatabaseProvider } from '@shackleai/db'
 import type {
   CompanyTemplate,
+  CompanyExport,
+  CompanyImportResult,
   TemplateSummary,
+  Company,
   Agent,
   Goal,
   Policy,
+  Project,
+  Issue,
 } from '@shackleai/shared'
 import { BUILTIN_TEMPLATES } from './builtin.js'
 
@@ -216,6 +221,295 @@ export async function exportTemplate(
       max_calls_per_hour: p.max_calls_per_hour,
       agent_name: p.agent_id ? agentIdToName.get(p.agent_id) ?? null : null,
     })),
+  }
+}
+
+/**
+ * Export a full company snapshot -- agents, goals, policies, projects, and issues.
+ * All UUIDs are scrubbed and replaced with name-based references.
+ * Secrets, cost_events, heartbeat_runs, and timestamps are stripped.
+ */
+export async function exportCompany(
+  db: DatabaseProvider,
+  companyId: string,
+): Promise<CompanyExport> {
+  // Fetch company metadata
+  const companyResult = await db.query<Company>(
+    `SELECT * FROM companies WHERE id = $1`,
+    [companyId],
+  )
+  if (companyResult.rows.length === 0) {
+    throw new Error(`Company ${companyId} not found`)
+  }
+  const company = companyResult.rows[0]
+
+  // Fetch all entities
+  const agentResult = await db.query<Agent>(
+    `SELECT * FROM agents WHERE company_id = $1 ORDER BY created_at ASC`,
+    [companyId],
+  )
+  const agents = agentResult.rows
+
+  const agentIdToName = new Map<string, string>()
+  for (const a of agents) {
+    agentIdToName.set(a.id, a.name)
+  }
+
+  const goalResult = await db.query<Goal>(
+    `SELECT * FROM goals WHERE company_id = $1 ORDER BY created_at ASC`,
+    [companyId],
+  )
+  const goals = goalResult.rows
+
+  const goalIdToTitle = new Map<string, string>()
+  for (const g of goals) {
+    goalIdToTitle.set(g.id, g.title)
+  }
+
+  const policyResult = await db.query<Policy>(
+    `SELECT * FROM policies WHERE company_id = $1 ORDER BY priority DESC, created_at ASC`,
+    [companyId],
+  )
+
+  const projectResult = await db.query<Project>(
+    `SELECT * FROM projects WHERE company_id = $1 ORDER BY created_at ASC`,
+    [companyId],
+  )
+  const projects = projectResult.rows
+
+  const projectIdToName = new Map<string, string>()
+  for (const pr of projects) {
+    projectIdToName.set(pr.id, pr.name)
+  }
+
+  const issueResult = await db.query<Issue>(
+    `SELECT * FROM issues WHERE company_id = $1 ORDER BY created_at ASC`,
+    [companyId],
+  )
+  const issues = issueResult.rows
+
+  const issueIdToTitle = new Map<string, string>()
+  for (const i of issues) {
+    issueIdToTitle.set(i.id, i.title)
+  }
+
+  return {
+    export_version: '1.0.0',
+    name: company.name,
+    description: company.description ?? '',
+    version: '1.0.0',
+    company: {
+      name: company.name,
+      description: company.description,
+      issue_prefix: company.issue_prefix,
+      budget_monthly_cents: company.budget_monthly_cents,
+      default_honesty_checklist: company.default_honesty_checklist,
+      require_approval: company.require_approval,
+    },
+    agents: agents.map((a) => ({
+      name: a.name,
+      title: a.title,
+      role: a.role,
+      capabilities: a.capabilities,
+      adapter_type: a.adapter_type,
+      adapter_config: a.adapter_config,
+      budget_monthly_cents: a.budget_monthly_cents,
+      reports_to: a.reports_to ? agentIdToName.get(a.reports_to) ?? null : null,
+    })),
+    goals: goals.map((g) => ({
+      title: g.title,
+      description: g.description,
+      level: g.level,
+      owner_agent_name: g.owner_agent_id
+        ? agentIdToName.get(g.owner_agent_id) ?? null
+        : null,
+    })),
+    policies: policyResult.rows.map((po) => ({
+      name: po.name,
+      tool_pattern: po.tool_pattern,
+      action: po.action,
+      priority: po.priority,
+      max_calls_per_hour: po.max_calls_per_hour,
+      agent_name: po.agent_id ? agentIdToName.get(po.agent_id) ?? null : null,
+    })),
+    projects: projects.map((pr) => ({
+      name: pr.name,
+      description: pr.description,
+      status: pr.status,
+      target_date: pr.target_date,
+      goal_title: pr.goal_id ? goalIdToTitle.get(pr.goal_id) ?? null : null,
+      lead_agent_name: pr.lead_agent_id
+        ? agentIdToName.get(pr.lead_agent_id) ?? null
+        : null,
+    })),
+    issues: issues.map((i) => ({
+      title: i.title,
+      description: i.description,
+      status: i.status,
+      priority: i.priority,
+      assignee_agent_name: i.assignee_agent_id
+        ? agentIdToName.get(i.assignee_agent_id) ?? null
+        : null,
+      project_name: i.project_id
+        ? projectIdToName.get(i.project_id) ?? null
+        : null,
+      goal_title: i.goal_id ? goalIdToTitle.get(i.goal_id) ?? null : null,
+      parent_issue_title: i.parent_id
+        ? issueIdToTitle.get(i.parent_id) ?? null
+        : null,
+    })),
+  }
+}
+
+/**
+ * Import a full company export -- creates company + all entities.
+ * Resolves all name-based references to real IDs.
+ * If a company with the same name exists, the caller must provide a renamed company.name.
+ */
+export async function importCompany(
+  db: DatabaseProvider,
+  data: CompanyExport,
+): Promise<CompanyImportResult> {
+  // Check for name collision
+  const existing = await db.query<Company>(
+    `SELECT id FROM companies WHERE name = $1`,
+    [data.company.name],
+  )
+  if (existing.rows.length > 0) {
+    throw new Error(
+      `A company named "${data.company.name}" already exists. Choose a different name.`,
+    )
+  }
+
+  // Phase 1: Create the company
+  const companyResult = await db.query<Company>(
+    `INSERT INTO companies
+       (name, description, issue_prefix, budget_monthly_cents, default_honesty_checklist, require_approval)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [
+      data.company.name,
+      data.company.description ?? null,
+      data.company.issue_prefix,
+      data.company.budget_monthly_cents ?? 0,
+      data.company.default_honesty_checklist
+        ? JSON.stringify(data.company.default_honesty_checklist)
+        : null,
+      data.company.require_approval ?? false,
+    ],
+  )
+  const company = companyResult.rows[0]
+  const companyId = company.id
+
+  // Phase 2: Import agents, goals, policies via existing importTemplate
+  const templateResult = await importTemplate(db, companyId, {
+    name: data.name,
+    description: data.description,
+    version: data.version,
+    agents: data.agents,
+    goals: data.goals,
+    policies: data.policies,
+  })
+
+  // Build lookup maps from created entities
+  const agentNameToId = new Map<string, string>()
+  for (const a of templateResult.agents) {
+    agentNameToId.set(a.name, a.id)
+  }
+
+  const goalTitleToId = new Map<string, string>()
+  for (const g of templateResult.goals) {
+    goalTitleToId.set(g.title, g.id)
+  }
+
+  // Phase 3: Create projects
+  const projectNameToId = new Map<string, string>()
+  let projectsCreated = 0
+
+  for (const ep of data.projects ?? []) {
+    const goalId = ep.goal_title
+      ? goalTitleToId.get(ep.goal_title) ?? null
+      : null
+    const leadAgentId = ep.lead_agent_name
+      ? agentNameToId.get(ep.lead_agent_name) ?? null
+      : null
+
+    const result = await db.query<Project>(
+      `INSERT INTO projects
+         (company_id, name, description, status, target_date, goal_id, lead_agent_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        companyId,
+        ep.name,
+        ep.description ?? null,
+        ep.status,
+        ep.target_date ?? null,
+        goalId,
+        leadAgentId,
+      ],
+    )
+    projectNameToId.set(ep.name, result.rows[0].id)
+    projectsCreated++
+  }
+
+  // Phase 4: Create issues (two passes -- first without parent_id, then resolve parents)
+  const issueTitleToId = new Map<string, string>()
+  let issuesCreated = 0
+
+  // First pass: create all issues without parent references
+  for (const ei of data.issues ?? []) {
+    const assigneeId = ei.assignee_agent_name
+      ? agentNameToId.get(ei.assignee_agent_name) ?? null
+      : null
+    const projectId = ei.project_name
+      ? projectNameToId.get(ei.project_name) ?? null
+      : null
+    const goalId = ei.goal_title
+      ? goalTitleToId.get(ei.goal_title) ?? null
+      : null
+
+    const result = await db.query<Issue>(
+      `INSERT INTO issues
+         (company_id, title, description, status, priority, assignee_agent_id, project_id, goal_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        companyId,
+        ei.title,
+        ei.description ?? null,
+        ei.status,
+        ei.priority,
+        assigneeId,
+        projectId,
+        goalId,
+      ],
+    )
+    issueTitleToId.set(ei.title, result.rows[0].id)
+    issuesCreated++
+  }
+
+  // Second pass: resolve parent issue references
+  for (const ei of data.issues ?? []) {
+    if (ei.parent_issue_title) {
+      const parentId = issueTitleToId.get(ei.parent_issue_title)
+      const issueId = issueTitleToId.get(ei.title)
+      if (parentId && issueId) {
+        await db.query(
+          `UPDATE issues SET parent_id = $1, updated_at = NOW() WHERE id = $2 AND company_id = $3`,
+          [parentId, issueId, companyId],
+        )
+      }
+    }
+  }
+
+  return {
+    company,
+    agents_created: templateResult.agents_created,
+    goals_created: templateResult.goals_created,
+    policies_created: templateResult.policies_created,
+    projects_created: projectsCreated,
+    issues_created: issuesCreated,
   }
 }
 

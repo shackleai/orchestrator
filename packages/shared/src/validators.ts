@@ -449,3 +449,50 @@ export const CompanyTemplateInput = z.object({
   policies: z.array(templatePolicySchema).optional().default([]),
 })
 export type CompanyTemplateInput = z.infer<typeof CompanyTemplateInput>
+
+// ---------------------------------------------------------------------------
+// Company Export/Import
+// ---------------------------------------------------------------------------
+
+const exportProjectSchema = z.object({
+  name: nonEmpty,
+  description: z.string().nullable().optional(),
+  status: z.enum(projectStatusValues).default(ProjectStatus.Active),
+  target_date: z.string().nullable().optional(),
+  goal_title: z.string().nullable().optional(),
+  lead_agent_name: z.string().nullable().optional(),
+})
+
+const exportIssueSchema = z.object({
+  title: nonEmpty,
+  description: z.string().nullable().optional(),
+  status: z.enum(issueStatusValues).default(IssueStatus.Backlog),
+  priority: z.enum(issuePriorityValues).default(IssuePriority.Medium),
+  assignee_agent_name: z.string().nullable().optional(),
+  project_name: z.string().nullable().optional(),
+  goal_title: z.string().nullable().optional(),
+  parent_issue_title: z.string().nullable().optional(),
+})
+
+const exportCompanyMetaSchema = z.object({
+  name: nonEmpty,
+  description: z.string().nullable().optional(),
+  issue_prefix: nonEmpty,
+  budget_monthly_cents: z.number().int().min(0).optional().default(0),
+  default_honesty_checklist: z.array(z.string().min(1)).nullable().optional(),
+  require_approval: z.boolean().optional().default(false),
+})
+
+export const CompanyExportInput = z.object({
+  export_version: z.string().default("1.0.0"),
+  name: nonEmpty,
+  description: z.string().default(""),
+  version: z.string().default("1.0.0"),
+  company: exportCompanyMetaSchema,
+  agents: z.array(templateAgentSchema).min(1),
+  goals: z.array(templateGoalSchema).optional().default([]),
+  policies: z.array(templatePolicySchema).optional().default([]),
+  projects: z.array(exportProjectSchema).optional().default([]),
+  issues: z.array(exportIssueSchema).optional().default([]),
+})
+export type CompanyExportInput = z.infer<typeof CompanyExportInput>

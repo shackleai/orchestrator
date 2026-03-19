@@ -3,9 +3,12 @@
  */
 
 import type { Command } from 'commander'
+import { readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import * as p from '@clack/prompts'
 import type { Company } from '@shackleai/shared'
 import type { TemplateImportResult } from '@shackleai/core'
+import type { CompanyImportResult } from '@shackleai/shared'
 import { apiClient, getCompanyId } from '../api-client.js'
 import { readConfig, writeConfig } from '../config.js'
 
@@ -286,6 +289,130 @@ async function showCurrent(): Promise<void> {
   console.log(`Budget:  $${(c.budget_monthly_cents / 100).toFixed(2)}/mo`)
 }
 
+async function exportCompanyCmd(opts: { output?: string }): Promise<void> {
+  const companyId = await getCompanyId()
+  const spin = p.spinner()
+  spin.start("Exporting company...")
+
+  const res = await apiClient("/api/companies/" + companyId + "/export", {
+    method: "POST",
+  })
+
+  if (!res.ok) {
+    spin.stop("Export failed")
+    const body = (await res.json()) as ApiResponse<never>
+    console.error("Error: " + (body.error ?? res.statusText))
+    process.exit(1)
+  }
+
+  const body = (await res.json()) as ApiResponse<Record<string, unknown>>
+  const json = JSON.stringify(body.data, null, 2)
+
+  if (opts.output) {
+    const filePath = resolve(opts.output)
+    await writeFile(filePath, json, "utf8")
+    spin.stop("Exported to " + filePath)
+  } else {
+    spin.stop("Export complete")
+    console.log(json)
+  }
+}
+
+async function importCompanyCmd(file: string): Promise<void> {
+  const filePath = resolve(file)
+
+  let rawJson: string
+  try {
+    rawJson = await readFile(filePath, "utf8")
+  } catch {
+    console.error("Error: Could not read file " + filePath)
+    process.exit(1)
+  }
+
+  let data: Record<string, unknown>
+  try {
+    data = JSON.parse(rawJson) as Record<string, unknown>
+  } catch {
+    console.error("Error: Invalid JSON in " + filePath)
+    process.exit(1)
+  }
+
+  const spin = p.spinner()
+  spin.start("Importing company...")
+
+  const res = await apiClient("/api/companies/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+
+  if (!res.ok) {
+    spin.stop("Import failed")
+    const body = (await res.json()) as ApiResponse<never>
+
+    // Handle name collision: prompt for rename
+    if (res.status === 409 && body.error?.includes("already exists")) {
+      console.error(body.error)
+      const newName = await p.text({
+        message: "Enter a new company name",
+        placeholder: (data.company as Record<string, unknown>)?.name + " (copy)",
+        validate: (v) => {
+          if (!v.trim()) return "Company name is required"
+          return undefined
+        },
+      })
+
+      if (p.isCancel(newName)) {
+        p.cancel("Cancelled.")
+        return
+      }
+
+      // Update the company name in the data and retry
+      const companyMeta = data.company as Record<string, unknown>
+      companyMeta.name = newName.trim()
+      data.name = newName.trim()
+
+      spin.start("Importing company...")
+      const retryRes = await apiClient("/api/companies/import", {
+        method: "POST",
+        body: JSON.stringify(data),
+      })
+
+      if (!retryRes.ok) {
+        spin.stop("Import failed")
+        const retryBody = (await retryRes.json()) as ApiResponse<never>
+        console.error("Error: " + (retryBody.error ?? retryRes.statusText))
+        process.exit(1)
+      }
+
+      const retryBody = (await retryRes.json()) as ApiResponse<CompanyImportResult>
+      const r = retryBody.data
+      spin.stop(
+        "Company imported: " + r.company.name + " (" + r.company.id + ")\n" +
+        "  Agents: " + r.agents_created +
+        ", Goals: " + r.goals_created +
+        ", Policies: " + r.policies_created +
+        ", Projects: " + r.projects_created +
+        ", Issues: " + r.issues_created,
+      )
+      return
+    }
+
+    console.error("Error: " + (body.error ?? res.statusText))
+    process.exit(1)
+  }
+
+  const body = (await res.json()) as ApiResponse<CompanyImportResult>
+  const r = body.data
+  spin.stop(
+    "Company imported: " + r.company.name + " (" + r.company.id + ")\n" +
+    "  Agents: " + r.agents_created +
+    ", Goals: " + r.goals_created +
+    ", Policies: " + r.policies_created +
+    ", Projects: " + r.projects_created +
+    ", Issues: " + r.issues_created,
+  )
+}
+
 export function registerCompanyCommand(program: Command): void {
   const company = program
     .command('company')
@@ -326,5 +453,21 @@ export function registerCompanyCommand(program: Command): void {
     .description('Show the current active company')
     .action(async () => {
       await showCurrent()
+    })
+
+  company
+    .command("export")
+    .description("Export current company as portable JSON")
+    .option("-o, --output <file>", "Write to file instead of stdout")
+    .action(async (opts: { output?: string }) => {
+      await exportCompanyCmd(opts)
+    })
+
+  company
+    .command("import")
+    .argument("<file>", "Path to company export JSON file")
+    .description("Import a company from an export JSON file")
+    .action(async (file: string) => {
+      await importCompanyCmd(file)
     })
 }
