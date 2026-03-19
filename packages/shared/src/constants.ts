@@ -39,6 +39,10 @@ export const AdapterType = {
   Mcp: 'mcp',
   OpenClaw: 'openclaw',
   CrewAI: 'crewai',
+  Codex: 'codex',
+  Cursor: 'cursor',
+  Gemini: 'gemini',
+  Kiro: 'kiro',
 } as const
 export type AdapterType = (typeof AdapterType)[keyof typeof AdapterType]
 

@@ -16,6 +16,10 @@ describe('AdapterRegistry', () => {
     expect(registry.has('mcp')).toBe(true)
     expect(registry.has('openclaw')).toBe(true)
     expect(registry.has('crewai')).toBe(true)
+    expect(registry.has('codex')).toBe(true)
+    expect(registry.has('cursor')).toBe(true)
+    expect(registry.has('gemini')).toBe(true)
+    expect(registry.has('kiro')).toBe(true)
 
     expect(registry.get('process')).toBeInstanceOf(ProcessAdapter)
     expect(registry.get('http')).toBeInstanceOf(HttpAdapter)
@@ -74,12 +78,16 @@ describe('AdapterRegistry', () => {
     registry.register(mockAdapter)
 
     const all = registry.list()
-    expect(all).toHaveLength(7) // process + http + claude + mcp + openclaw + crewai + custom
+    expect(all).toHaveLength(11) // 10 built-in + 1 custom
     expect(all.map((a) => a.type).sort()).toEqual([
       'claude',
+      'codex',
       'crewai',
+      'cursor',
       'custom',
+      'gemini',
       'http',
+      'kiro',
       'mcp',
       'openclaw',
       'process',

@@ -9,6 +9,10 @@ export { ClaudeAdapter } from './claude.js'
 export { McpAdapter } from './mcp.js'
 export { OpenClawAdapter } from './openclaw.js'
 export { CrewAIAdapter } from './crewai.js'
+export { CodexAdapter } from './codex.js'
+export { CursorAdapter } from './cursor.js'
+export { GeminiAdapter } from './gemini.js'
+export { KiroAdapter } from './kiro.js'
 export { getLastSessionState, saveSessionState } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
@@ -18,6 +22,10 @@ import { ClaudeAdapter } from './claude.js'
 import { McpAdapter } from './mcp.js'
 import { OpenClawAdapter } from './openclaw.js'
 import { CrewAIAdapter } from './crewai.js'
+import { CodexAdapter } from './codex.js'
+import { CursorAdapter } from './cursor.js'
+import { GeminiAdapter } from './gemini.js'
+import { KiroAdapter } from './kiro.js'
 
 /**
  * AdapterRegistry — maps adapter_type strings to AdapterModule instances.
@@ -34,6 +42,10 @@ export class AdapterRegistry {
     this.register(new McpAdapter())
     this.register(new OpenClawAdapter())
     this.register(new CrewAIAdapter())
+    this.register(new CodexAdapter())
+    this.register(new CursorAdapter())
+    this.register(new GeminiAdapter())
+    this.register(new KiroAdapter())
   }
 
   /** Register an adapter module. Overwrites any existing adapter with the same type. */
