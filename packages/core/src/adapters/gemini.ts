@@ -47,7 +47,6 @@ export class GeminiAdapter implements AdapterModule {
       const child = spawn('gemini', args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
         detached: !IS_WIN,
       })
       this.activeChild = child
@@ -96,7 +95,6 @@ export class GeminiAdapter implements AdapterModule {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const child = spawn('gemini', ['--version'], {
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
       })
       child.stdout.on('data', () => { /* drain */ })
       const timeout = setTimeout(() => {

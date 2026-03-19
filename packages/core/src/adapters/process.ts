@@ -112,7 +112,6 @@ export class ProcessAdapter implements AdapterModule {
         env,
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
         detached: !IS_WIN,
       })
 

@@ -47,7 +47,6 @@ export class CursorAdapter implements AdapterModule {
       const child = spawn('cursor', args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
         detached: !IS_WIN,
       })
       this.activeChild = child
@@ -96,7 +95,6 @@ export class CursorAdapter implements AdapterModule {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const child = spawn('cursor', ['--version'], {
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
       })
       child.stdout.on('data', () => { /* drain */ })
       const timeout = setTimeout(() => {
