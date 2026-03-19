@@ -195,3 +195,17 @@ export const WORKTREE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 /** Minimum git version required for worktree support. */
 export const GIT_MIN_VERSION = '2.5.0'
+
+// ---------------------------------------------------------------------------
+// WebSocket real-time event types
+// ---------------------------------------------------------------------------
+
+export const WebSocketEventType = {
+  HeartbeatStart: 'heartbeat_start',
+  HeartbeatEnd: 'heartbeat_end',
+  AgentStatusChange: 'agent_status_change',
+  TaskUpdate: 'task_update',
+  CostEvent: 'cost_event',
+} as const
+export type WebSocketEventType =
+  (typeof WebSocketEventType)[keyof typeof WebSocketEventType]

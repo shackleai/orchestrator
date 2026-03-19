@@ -561,3 +561,59 @@ export interface WorkspaceOperation {
   created_at: Date
 }
 
+// ---------------------------------------------------------------------------
+// WebSocket Events — real-time dashboard updates
+// ---------------------------------------------------------------------------
+
+/**
+ * A WebSocket event sent to connected dashboard clients.
+ * All events include companyId so the server can broadcast
+ * only to connections belonging to the same company.
+ */
+export interface WebSocketEvent {
+  /** Event type discriminator (e.g. 'heartbeat_start', 'agent_status_change'). */
+  type: string
+  /** Company scope — used for routing to the correct connections. */
+  companyId: string
+  /** ISO-8601 timestamp of when the event occurred. */
+  timestamp: string
+  /** Event-specific payload. */
+  payload: Record<string, unknown>
+}
+
+/** Payload for heartbeat_start / heartbeat_end events. */
+export interface HeartbeatEventPayload {
+  runId: string
+  agentId: string
+  trigger: string
+  status?: string
+  exitCode?: number
+  durationMs?: number
+}
+
+/** Payload for agent_status_change events. */
+export interface AgentStatusChangePayload {
+  agentId: string
+  previousStatus: string
+  newStatus: string
+}
+
+/** Payload for task_update events. */
+export interface TaskUpdatePayload {
+  issueId: string
+  title: string
+  previousStatus?: string
+  newStatus: string
+  agentId?: string
+}
+
+/** Payload for cost_event events. */
+export interface CostEventPayload {
+  agentId: string
+  provider: string
+  model: string
+  costCents: number
+  inputTokens: number
+  outputTokens: number
+}
+
