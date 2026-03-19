@@ -265,3 +265,45 @@ export const LlmProvider = {
   OpenRouter: 'openrouter',
 } as const
 export type LlmProvider = (typeof LlmProvider)[keyof typeof LlmProvider]
+
+// ---------------------------------------------------------------------------
+// Company Membership Roles — hierarchical: owner > admin > member > viewer
+// ---------------------------------------------------------------------------
+
+export const MembershipRole = {
+  Owner: 'owner',
+  Admin: 'admin',
+  Member: 'member',
+  Viewer: 'viewer',
+} as const
+export type MembershipRole = (typeof MembershipRole)[keyof typeof MembershipRole]
+
+/** Numeric weight for role hierarchy comparison — higher = more powerful. */
+export const MembershipRoleWeight: Record<MembershipRole, number> = {
+  [MembershipRole.Owner]: 40,
+  [MembershipRole.Admin]: 30,
+  [MembershipRole.Member]: 20,
+  [MembershipRole.Viewer]: 10,
+} as const
+
+// ---------------------------------------------------------------------------
+// Invite & Join Request Statuses
+// ---------------------------------------------------------------------------
+
+export const InviteStatus = {
+  Pending: 'pending',
+  Accepted: 'accepted',
+  Expired: 'expired',
+  Revoked: 'revoked',
+} as const
+export type InviteStatus = (typeof InviteStatus)[keyof typeof InviteStatus]
+
+export const JoinRequestStatus = {
+  Pending: 'pending',
+  Approved: 'approved',
+  Denied: 'denied',
+} as const
+export type JoinRequestStatus = (typeof JoinRequestStatus)[keyof typeof JoinRequestStatus]
+
+/** Invite token expiry — 72 hours in milliseconds. */
+export const INVITE_TTL_MS = 72 * 60 * 60 * 1000

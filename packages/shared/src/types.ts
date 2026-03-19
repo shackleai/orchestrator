@@ -791,3 +791,37 @@ export interface JoinRequest {
   decided_by: string | null
   created_at: Date
 }
+
+// ---------------------------------------------------------------------------
+// Company Memberships, Invites & Join Requests
+// ---------------------------------------------------------------------------
+
+export interface CompanyMembership {
+  id: string
+  company_id: string
+  user_id: string
+  role: string
+  joined_at: Date
+}
+
+export interface CompanyInvite {
+  id: string
+  company_id: string
+  email: string
+  role: string
+  token: string
+  invited_by: string
+  expires_at: Date
+  accepted_at: Date | null
+  created_at: Date
+}
+
+export interface JoinRequest {
+  id: string
+  company_id: string
+  user_id: string
+  message: string | null
+  status: string
+  decided_by: string | null
+  created_at: Date
+}

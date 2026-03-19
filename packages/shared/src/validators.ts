@@ -23,6 +23,7 @@ import {
   LlmProvider,
   WorkspacePolicyAction,
   UserRole,
+  MembershipRole,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -662,3 +663,31 @@ export const LoginUserInput = z.object({
   password: nonEmpty,
 })
 export type LoginUserInput = z.infer<typeof LoginUserInput>
+
+// ---------------------------------------------------------------------------
+// Company Memberships, Invites & Join Requests
+// ---------------------------------------------------------------------------
+
+
+const membershipRoleValues = Object.values(MembershipRole) as [string, ...string[]]
+
+export const CreateInviteInput = z.object({
+  email: z.string().email(),
+  role: z.enum(membershipRoleValues).optional().default(MembershipRole.Member),
+})
+export type CreateInviteInput = z.infer<typeof CreateInviteInput>
+
+export const CreateJoinRequestInput = z.object({
+  message: z.string().max(500).nullable().optional(),
+})
+export type CreateJoinRequestInput = z.infer<typeof CreateJoinRequestInput>
+
+export const DecideJoinRequestInput = z.object({
+  action: z.enum(['approve', 'deny'] as const),
+})
+export type DecideJoinRequestInput = z.infer<typeof DecideJoinRequestInput>
+
+export const UpdateMemberRoleInput = z.object({
+  role: z.enum(membershipRoleValues),
+})
+export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleInput>
