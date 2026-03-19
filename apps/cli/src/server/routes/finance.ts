@@ -102,7 +102,7 @@ export function financeRouter(db: DatabaseProvider): Hono<{ Variables: Variables
     const result = await db.query<FinanceBreakdown>(
       `SELECT
          COALESCE(${groupBy}::text, 'unknown') AS key,
-         SUM(CASE WHEN event_type = 'charge' THEN amount_cents WHEN event_type IN ('refund','credit') THEN -amount_cents ELSE 0 END)::int AS total_cents,
+         SUM(amount_cents)::int AS total_cents,
          COUNT(*)::int AS event_count
        FROM finance_events
        WHERE ${where}
@@ -138,7 +138,7 @@ export function financeRouter(db: DatabaseProvider): Hono<{ Variables: Variables
     const result = await db.query<FinanceTimelineEntry>(
       `SELECT
          created_at::date::text AS date,
-         SUM(CASE WHEN event_type = 'charge' THEN amount_cents WHEN event_type IN ('refund','credit') THEN -amount_cents ELSE 0 END)::int AS total_cents,
+         SUM(amount_cents)::int AS total_cents,
          COUNT(*)::int AS event_count
        FROM finance_events
        WHERE ${where}
@@ -177,7 +177,7 @@ export function financeRouter(db: DatabaseProvider): Hono<{ Variables: Variables
       `SELECT
          fe.agent_id,
          a.name AS agent_name,
-         SUM(CASE WHEN fe.event_type = 'charge' THEN fe.amount_cents WHEN fe.event_type IN ('refund','credit') THEN -fe.amount_cents ELSE 0 END)::int AS total_cents,
+         SUM(fe.amount_cents)::int AS total_cents,
          COUNT(*)::int AS event_count
        FROM finance_events fe
        JOIN agents a ON a.id = fe.agent_id
