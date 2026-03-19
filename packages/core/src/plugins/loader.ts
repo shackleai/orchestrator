@@ -28,7 +28,7 @@ export class PluginValidationError extends Error {
  * Validate that a value satisfies the ShacklePlugin shape.
  * Does not use Zod — plugins are external code, we validate structurally.
  */
-function validatePlugin(source: string, obj: unknown): ShacklePlugin {
+export function validatePlugin(source: string, obj: unknown): ShacklePlugin {
   if (obj === null || typeof obj !== 'object') {
     throw new PluginValidationError(source, 'Export is not an object')
   }
@@ -58,7 +58,7 @@ function validatePlugin(source: string, obj: unknown): ShacklePlugin {
  * Extract a ShacklePlugin from a module's exports.
  * Checks: default export, named `plugin` export, then the module itself.
  */
-function extractPlugin(source: string, mod: Record<string, unknown>): ShacklePlugin {
+export function extractPlugin(source: string, mod: Record<string, unknown>): ShacklePlugin {
   // ES module default export
   if (mod.default && typeof mod.default === 'object') {
     return validatePlugin(source, mod.default)
@@ -134,5 +134,3 @@ export class PluginLoader {
     return plugin
   }
 }
-
-export { validatePlugin, extractPlugin }

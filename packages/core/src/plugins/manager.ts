@@ -202,7 +202,7 @@ export class PluginManager {
     const ctx: PluginContext = {
       db: this.db,
       companyId,
-      registerAdapter: (type: string, adapter: AdapterModule) => {
+      registerAdapter: (_type: string, adapter: AdapterModule) => {
         this.adapterRegistry.register(adapter)
       },
       registerHook: (event: HookEvent, handler: HookHandler) => {
