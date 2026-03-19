@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { Bot, Plus, Play, Loader2, Search } from 'lucide-react'
+import { useDebounce } from '@/hooks/useDebounce'
+import { Bot, Plus, Play, Loader2, Search, X } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -368,6 +369,10 @@ function AgentActions({ companyId, agent }: { companyId: string; agent: Agent })
     mutationFn: () => pauseAgent(companyId, agent.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast('Agent paused', 'info')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to pause agent: ${err.message}`, 'error')
     },
   })
 
@@ -375,6 +380,10 @@ function AgentActions({ companyId, agent }: { companyId: string; agent: Agent })
     mutationFn: () => resumeAgent(companyId, agent.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      toast('Agent resumed', 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to resume agent: ${err.message}`, 'error')
     },
   })
 
@@ -382,6 +391,11 @@ function AgentActions({ companyId, agent }: { companyId: string; agent: Agent })
     mutationFn: () => terminateAgent(companyId, agent.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+      setConfirmingTerminate(false)
+      toast('Agent terminated', 'info')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to terminate agent: ${err.message}`, 'error')
       setConfirmingTerminate(false)
     },
   })

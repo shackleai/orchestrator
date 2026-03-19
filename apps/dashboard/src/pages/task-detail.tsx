@@ -18,6 +18,7 @@ import {
   type Agent,
 } from '@/lib/api'
 import { formatDate, formatRelativeTime } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
 
 const STATUS_OPTIONS = [
   { value: 'backlog', label: 'Backlog' },
@@ -87,6 +88,7 @@ function AddCommentForm({
   issueId: string
 }) {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [body, setBody] = useState('')
 
   const mutation = useMutation({
@@ -94,6 +96,10 @@ function AddCommentForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', companyId, issueId] })
       setBody('')
+      toast('Comment added', 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to add comment: ${err.message}`, 'error')
     },
   })
 
@@ -280,10 +286,24 @@ export function TaskDetailPage() {
     enabled: !!companyId,
   })
 
+  const { toast } = useToast()
+
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Issue>) => updateIssue(companyId!, taskId!, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['task', companyId, taskId] })
+      const field = Object.keys(variables)[0]
+      const labels: Record<string, string> = {
+        title: 'Title updated',
+        description: 'Description updated',
+        status: 'Status updated',
+        priority: 'Priority updated',
+        assignee_agent_id: 'Assignee updated',
+      }
+      toast(labels[field] ?? 'Task updated', 'success')
+    },
+    onError: (err: Error) => {
+      toast(`Failed to update task: ${err.message}`, 'error')
     },
   })
 
