@@ -15,7 +15,9 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml}\"",
     "release": "changeset publish",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version",
+    "docs:dev": "cd website && npm start",
+    "docs:build": "cd website && npm run build"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.6.0",
