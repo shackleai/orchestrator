@@ -351,6 +351,35 @@ export interface IssueWorkProduct {
 }
 
 // ---------------------------------------------------------------------------
+// Documents
+// ---------------------------------------------------------------------------
+
+export interface Document {
+  id: string
+  company_id: string
+  title: string
+  content: string
+  created_by_agent_id: string | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface DocumentRevision {
+  id: string
+  document_id: string
+  content: string
+  revision_number: number
+  created_by_agent_id: string | null
+  created_at: Date
+}
+
+export interface IssueDocument {
+  issue_id: string
+  document_id: string
+  created_at: Date
+}
+
+// ---------------------------------------------------------------------------
 // Company Templates
 // ---------------------------------------------------------------------------
 

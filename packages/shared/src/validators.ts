@@ -411,6 +411,29 @@ export const AssignLabelInput = z.object({
 export type AssignLabelInput = z.infer<typeof AssignLabelInput>
 
 // ---------------------------------------------------------------------------
+// Document
+// ---------------------------------------------------------------------------
+
+export const CreateDocumentInput = z.object({
+  title: nonEmpty,
+  content: z.string().optional().default(''),
+  created_by_agent_id: uuid.nullable().optional(),
+})
+export type CreateDocumentInput = z.infer<typeof CreateDocumentInput>
+
+export const UpdateDocumentInput = z.object({
+  title: nonEmpty.optional(),
+  content: z.string().optional(),
+  updated_by_agent_id: uuid.nullable().optional(),
+})
+export type UpdateDocumentInput = z.infer<typeof UpdateDocumentInput>
+
+export const LinkDocumentInput = z.object({
+  document_id: uuid,
+})
+export type LinkDocumentInput = z.infer<typeof LinkDocumentInput>
+
+// ---------------------------------------------------------------------------
 // Company Template
 // ---------------------------------------------------------------------------
 
