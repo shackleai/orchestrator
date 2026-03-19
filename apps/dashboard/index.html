@@ -9,7 +9,9 @@
       // Apply saved theme before first paint to prevent flash
       (function() {
         var theme = localStorage.getItem('shackleai-theme') ?? 'dark';
-        if (theme === 'dark') {
+        var isDark = theme === 'dark' ||
+          (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
           document.documentElement.classList.add('dark');
         } else {
           document.documentElement.classList.remove('dark');
