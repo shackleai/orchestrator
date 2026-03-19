@@ -228,6 +228,16 @@ export type WebSocketEventType =
   (typeof WebSocketEventType)[keyof typeof WebSocketEventType]
 
 // ---------------------------------------------------------------------------
+// User Roles
+// ---------------------------------------------------------------------------
+
+export const UserRole = {
+  Admin: 'admin',
+  Member: 'member',
+} as const
+export type UserRole = (typeof UserRole)[keyof typeof UserRole]
+
+// ---------------------------------------------------------------------------
 // LLM Provider
 // ---------------------------------------------------------------------------
 
