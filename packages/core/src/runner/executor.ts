@@ -34,7 +34,7 @@ import type { CostTracker } from '../cost-tracker.js'
 import type { Observatory } from '../observatory.js'
 import { ContextBuilder } from '../context-builder.js'
 import type { AdapterRegistry } from '../adapters/index.js'
-import type { AdapterContext, AdapterResult, GoalAncestry } from '../adapters/index.js'
+import type { AdapterContext, AdapterModule, AdapterResult, GoalAncestry } from '../adapters/index.js'
 import { getLastSessionState, saveSessionState } from '../adapters/index.js'
 import type { RunnerResult } from '../scheduler.js'
 
@@ -224,6 +224,7 @@ export class HeartbeatExecutor {
         adapterResult = await this.executeWithTimeout(
           () => adapter.execute(ctx),
           timeoutMs,
+          adapter,
         )
       } catch (err) {
         if (err instanceof TimeoutError) {
@@ -669,6 +670,7 @@ export class HeartbeatExecutor {
   private executeWithTimeout<T>(
     fn: () => Promise<T>,
     timeoutMs: number,
+    adapter?: AdapterModule,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       let settled = false
@@ -676,6 +678,7 @@ export class HeartbeatExecutor {
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true
+          if (adapter?.abort) adapter.abort()
           reject(new TimeoutError(`Timed out after ${timeoutMs}ms`))
         }
       }, timeoutMs)

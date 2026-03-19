@@ -83,4 +83,6 @@ export interface AdapterModule {
 
   /** Optional: verify that the runtime environment is ready for this adapter. */
   testEnvironment?(): Promise<{ ok: boolean; error?: string }>
+
+  abort?(): void
 }

@@ -9,19 +9,18 @@
  * Cross-platform: on Windows, `python3` is typically just `python`.
  */
 
+import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
+import { gracefulKill, KILL_GRACE_MS } from './kill.js'
 
 const IS_WIN = process.platform === 'win32'
 const DEFAULT_PYTHON = IS_WIN ? 'python' : 'python3'
 
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
-
-/** Grace period between SIGTERM and SIGKILL in milliseconds. */
-const KILL_GRACE_MS = 10_000
 
 /** Maximum stdout buffer size in bytes (10 MB). */
 const MAX_STDOUT_BYTES = 10 * 1024 * 1024
@@ -65,6 +64,9 @@ function parseResultBlock(stdout: string): ShackleAIResult | null {
 export class OpenClawAdapter implements AdapterModule {
   readonly type = 'openclaw'
   readonly label = 'OpenClaw Agent'
+
+  private activeChild: ChildProcess | null = null
+  private abortKillTimer: ReturnType<typeof setTimeout> | null = null
 
   async execute(ctx: AdapterContext): Promise<AdapterResult> {
     const entrypoint = ctx.adapterConfig.entrypoint as string | undefined
@@ -139,7 +141,10 @@ export class OpenClawAdapter implements AdapterModule {
       const child = spawn(pythonPath, args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: !IS_WIN,
       })
+
+      this.activeChild = child
 
       child.stdout.on('data', (chunk: Buffer) => {
         if (stdoutTruncated) return
@@ -161,16 +166,13 @@ export class OpenClawAdapter implements AdapterModule {
 
       const timeoutId = setTimeout(() => {
         killed = true
-        child.kill('SIGTERM')
-
-        killTimer = setTimeout(() => {
-          child.kill('SIGKILL')
-        }, KILL_GRACE_MS)
+        killTimer = gracefulKill(child, KILL_GRACE_MS)
       }, timeoutMs)
 
       child.on('close', (code) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.clearActiveChild(child)
 
         let stdout = Buffer.concat(stdoutChunks).toString('utf-8')
         const stderr = Buffer.concat(stderrChunks).toString('utf-8')
@@ -200,6 +202,7 @@ export class OpenClawAdapter implements AdapterModule {
       child.on('error', (err) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.clearActiveChild(child)
 
         resolve({
           exitCode: 127,
@@ -208,6 +211,13 @@ export class OpenClawAdapter implements AdapterModule {
         })
       })
     })
+  }
+
+  abort(): void {
+    const child = this.activeChild
+    if (!child) return
+    if (this.abortKillTimer) clearTimeout(this.abortKillTimer)
+    this.abortKillTimer = gracefulKill(child, KILL_GRACE_MS)
   }
 
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
@@ -269,5 +279,10 @@ export class OpenClawAdapter implements AdapterModule {
         resolve({ ok: false, error: err.message })
       })
     })
+  }
+
+  private clearActiveChild(child: ChildProcess): void {
+    if (this.activeChild === child) this.activeChild = null
+    if (this.abortKillTimer) { clearTimeout(this.abortKillTimer); this.abortKillTimer = null }
   }
 }

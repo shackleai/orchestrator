@@ -123,4 +123,27 @@ describe('ProcessAdapter', () => {
     const result = await adapter.testEnvironment()
     expect(result.ok).toBe(true)
   })
+
+  it('abort() kills the running process', async () => {
+    const localAdapter = new ProcessAdapter()
+    const ctx = makeCtx({
+      adapterConfig: {
+        command: 'node',
+        args: ['-e', 'setTimeout(() => {}, 60000)'],
+        timeout: 300,
+      },
+    })
+
+    const resultPromise = localAdapter.execute(ctx)
+    await new Promise((r) => setTimeout(r, 500))
+    localAdapter.abort()
+    const result = await resultPromise
+    expect(result.exitCode).not.toBe(0)
+  }, 15_000)
+
+  it('abort() is safe to call when no process is running', () => {
+    const localAdapter = new ProcessAdapter()
+    localAdapter.abort()
+  })
+
 })

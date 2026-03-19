@@ -7,17 +7,16 @@
  * usage/session data. Injects SHACKLEAI_* env vars and CLAUDE_MODEL.
  */
 
+import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
+import { gracefulKill, KILL_GRACE_MS } from './kill.js'
 
 const IS_WIN = process.platform === 'win32'
 
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
-
-/** Grace period between SIGTERM and SIGKILL in milliseconds. */
-const KILL_GRACE_MS = 5_000
 
 /**
  * Try to extract a __shackleai_result__ JSON block from output text.
@@ -75,6 +74,9 @@ function parseShackleResult(
 export class ClaudeAdapter implements AdapterModule {
   readonly type = 'claude'
   readonly label = 'Claude Code CLI'
+
+  private activeChild: ChildProcess | null = null
+  private abortKillTimer: ReturnType<typeof setTimeout> | null = null
 
   async execute(ctx: AdapterContext): Promise<AdapterResult> {
     const prompt = ctx.adapterConfig.prompt as string | undefined
@@ -158,23 +160,23 @@ export class ClaudeAdapter implements AdapterModule {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: IS_WIN,
+        detached: !IS_WIN,
       })
+
+      this.activeChild = child
 
       child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
       child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
 
       const timeoutId = setTimeout(() => {
         killed = true
-        child.kill('SIGTERM')
-
-        killTimer = setTimeout(() => {
-          child.kill('SIGKILL')
-        }, KILL_GRACE_MS)
+        killTimer = gracefulKill(child, KILL_GRACE_MS)
       }, timeoutMs)
 
       child.on('close', (code) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.clearActiveChild(child)
 
         const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
         const stderr = Buffer.concat(stderrChunks).toString('utf-8')
@@ -194,6 +196,7 @@ export class ClaudeAdapter implements AdapterModule {
       child.on('error', (err) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.clearActiveChild(child)
 
         resolve({
           exitCode: 127,
@@ -202,6 +205,13 @@ export class ClaudeAdapter implements AdapterModule {
         })
       })
     })
+  }
+
+  abort(): void {
+    const child = this.activeChild
+    if (!child) return
+    if (this.abortKillTimer) clearTimeout(this.abortKillTimer)
+    this.abortKillTimer = gracefulKill(child, KILL_GRACE_MS)
   }
 
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
@@ -234,5 +244,10 @@ export class ClaudeAdapter implements AdapterModule {
         resolve({ ok: false, error: `claude CLI not found: ${err.message}` })
       })
     })
+  }
+
+  private clearActiveChild(child: ChildProcess): void {
+    if (this.activeChild === child) this.activeChild = null
+    if (this.abortKillTimer) { clearTimeout(this.abortKillTimer); this.abortKillTimer = null }
   }
 }

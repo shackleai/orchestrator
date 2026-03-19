@@ -6,6 +6,7 @@
  * SIGTERM → SIGKILL escalation.
  */
 
+import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
@@ -14,18 +15,19 @@ import { randomUUID } from 'node:crypto'
 import type { WorktreeConfig } from '@shackleai/shared'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
+import { gracefulKill, KILL_GRACE_MS } from './kill.js'
 
 const IS_WIN = process.platform === 'win32'
 
 /** Default timeout in milliseconds (300 seconds). */
 const DEFAULT_TIMEOUT_MS = 300_000
 
-/** Grace period between SIGTERM and SIGKILL in milliseconds. */
-const KILL_GRACE_MS = 5_000
-
 export class ProcessAdapter implements AdapterModule {
   readonly type = 'process'
   readonly label = 'Child Process'
+
+  private activeChild: ChildProcess | null = null
+  private abortKillTimer: ReturnType<typeof setTimeout> | null = null
 
   async execute(ctx: AdapterContext): Promise<AdapterResult> {
     const command = ctx.adapterConfig.command as string | undefined
@@ -111,23 +113,23 @@ export class ProcessAdapter implements AdapterModule {
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: IS_WIN,
+        detached: !IS_WIN,
       })
+
+      this.activeChild = child
 
       child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
       child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
 
       const timeoutId = setTimeout(() => {
         killed = true
-        child.kill('SIGTERM')
-
-        killTimer = setTimeout(() => {
-          child.kill('SIGKILL')
-        }, KILL_GRACE_MS)
+        killTimer = gracefulKill(child, KILL_GRACE_MS)
       }, timeoutMs)
 
       child.on('close', (code) => {
         clearTimeout(timeoutId)
         if (killTimer) clearTimeout(killTimer)
+        this.clearActiveChild(child)
         this.cleanupTmpFile(contextTmpFile)
 
         const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
@@ -154,6 +156,13 @@ export class ProcessAdapter implements AdapterModule {
     })
   }
 
+  abort(): void {
+    const child = this.activeChild
+    if (!child) return
+    if (this.abortKillTimer) clearTimeout(this.abortKillTimer)
+    this.abortKillTimer = gracefulKill(child, KILL_GRACE_MS)
+  }
+
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
     // Basic check — Node.js can always spawn processes
     return { ok: true }
@@ -166,5 +175,10 @@ export class ProcessAdapter implements AdapterModule {
     } catch {
       // Best-effort cleanup
     }
+  }
+
+  private clearActiveChild(child: ChildProcess): void {
+    if (this.activeChild === child) this.activeChild = null
+    if (this.abortKillTimer) { clearTimeout(this.abortKillTimer); this.abortKillTimer = null }
   }
 }
