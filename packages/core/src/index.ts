@@ -43,6 +43,7 @@ export { Scheduler } from './scheduler.js'
 export type { RunnerExecutor, RunnerResult } from './scheduler.js'
 
 export { HeartbeatExecutor } from './runner/index.js'
+export { HeartbeatEventLogger, insertHeartbeatRunEvent, getHeartbeatRunEvents } from './runner/index.js'
 
 export { LicenseManager } from './license.js'
 export type { LicenseStatus, ActivationResult } from './license.js'
