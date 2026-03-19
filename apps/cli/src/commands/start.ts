@@ -27,6 +27,7 @@ import { AgentApiKeyStatus } from '@shackleai/shared'
 import { readConfig, writeConfig, resolveDatabaseUrl } from '../config.js'
 import type { ShackleAIConfig } from '../config.js'
 import { createApp } from '../server/index.js'
+import { getWebSocketManager } from '../server/realtime/ws.js'
 import { VERSION } from '../index.js'
 
 export async function startCommand(options: { port: number }): Promise<void> {
@@ -131,13 +132,20 @@ export async function startCommand(options: { port: number }): Promise<void> {
   Company: ${config.companyName}
   Mode:    ${config.mode}
 
-  Dashboard: http://127.0.0.1:${port}
-  Health:    http://127.0.0.1:${port}/api/health
+  Dashboard:  http://127.0.0.1:${port}
+  Health:     http://127.0.0.1:${port}/api/health
+  WebSocket:  ws://127.0.0.1:${port}/ws?companyId=<id>
 
   Press Ctrl+C to stop.
   `)
 
-  serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+  const httpServer = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+
+  // Attach WebSocket server for real-time dashboard events
+  // Cast needed because @hono/node-server's ServerType includes HTTP/2,
+  // but ws only accepts http.Server — we always use HTTP/1.1 here.
+  const wsManager = getWebSocketManager()
+  wsManager.attach(httpServer as unknown as import('node:http').Server)
 
   // Prevent stdin from keeping the process waiting for input on Windows
   if (process.stdin.isTTY) {
@@ -152,6 +160,7 @@ export async function startCommand(options: { port: number }): Promise<void> {
   // Graceful shutdown on Ctrl+C
   const shutdown = () => {
     console.log('\n  Shutting down ShackleAI Orchestrator...')
+    wsManager.close()
     scheduler.stop()
     db!.close().catch(() => {})
     process.exit(0)
