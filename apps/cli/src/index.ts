@@ -38,7 +38,7 @@ program
 
 program
   .command('init')
-  .description('Initialize a new ShackleAI orchestrator')
+  .description('Initialize a new ShackleAI orchestrator (set SHACKLEAI_DATABASE_URL env var for secure DB config)')
   .option('--force', 'Reinitialize even if already configured')
   .option('--yes', 'Non-interactive mode with defaults')
   .option('--name <name>', 'Company name (required with --yes)')

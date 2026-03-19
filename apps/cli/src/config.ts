@@ -45,6 +45,58 @@ export async function readConfig(): Promise<ShackleAIConfig | null> {
   }
 }
 
+/**
+ * Resolve the database URL with env-var priority:
+ *   1. SHACKLEAI_DATABASE_URL env var (highest priority)
+ *   2. config.databaseUrl from config file (fallback)
+ *
+ * Returns { url, source } so callers know where it came from.
+ */
+export function resolveDatabaseUrl(config: ShackleAIConfig): {
+  url: string | undefined
+  source: 'env' | 'config' | 'none'
+} {
+  const envUrl = process.env.SHACKLEAI_DATABASE_URL
+  if (envUrl) {
+    return { url: envUrl, source: 'env' }
+  }
+  if (config.databaseUrl) {
+    return { url: config.databaseUrl, source: 'config' }
+  }
+  return { url: undefined, source: 'none' }
+}
+
+/**
+ * Strip sensitive fields from the config file on disk.
+ * Removes databaseUrl and llmKeys, then writes the cleaned config.
+ * Returns the list of fields that were stripped.
+ */
+export async function stripSensitiveFromConfig(): Promise<string[]> {
+  const config = await readConfig()
+  if (!config) {
+    return []
+  }
+
+  const stripped: string[] = []
+
+  if (config.databaseUrl) {
+    delete config.databaseUrl
+    stripped.push('databaseUrl')
+  }
+
+  if (config.llmKeys) {
+    if (config.llmKeys.openai) stripped.push('llmKeys.openai')
+    if (config.llmKeys.anthropic) stripped.push('llmKeys.anthropic')
+    delete config.llmKeys
+  }
+
+  if (stripped.length > 0) {
+    await writeConfig(config)
+  }
+
+  return stripped
+}
+
 export async function writeConfig(config: ShackleAIConfig): Promise<void> {
   const configPath = getConfigPath()
   const baseDir = getBaseDir()
