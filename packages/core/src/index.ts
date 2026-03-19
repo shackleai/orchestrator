@@ -61,3 +61,13 @@ export type { SecretRow, SecretListItem } from './secrets/index.js'
 
 export { checkHonestyGate } from './honesty-gate.js'
 export type { HonestyGateResult } from './honesty-gate.js'
+
+
+export {
+  listTemplates,
+  getTemplate,
+  importTemplate,
+  exportTemplate,
+  clearTemplateCache,
+} from './templates/index.js'
+export type { TemplateImportResult } from './templates/index.js'

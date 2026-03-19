@@ -408,3 +408,44 @@ export const AssignLabelInput = z.object({
   label_id: uuid,
 })
 export type AssignLabelInput = z.infer<typeof AssignLabelInput>
+
+// ---------------------------------------------------------------------------
+// Company Template
+// ---------------------------------------------------------------------------
+
+const templateAgentSchema = z.object({
+  name: nonEmpty,
+  title: z.string().nullable().optional(),
+  role: z.enum(agentRoleValues).default(AgentRole.General),
+  capabilities: z.string().nullable().optional(),
+  adapter_type: z.enum(adapterTypeValues).default(AdapterType.Process),
+  adapter_config: z.record(z.string(), z.unknown()).optional().default({}),
+  budget_monthly_cents: z.number().int().min(0).optional().default(0),
+  reports_to: z.string().nullable().optional(),
+})
+
+const templateGoalSchema = z.object({
+  title: nonEmpty,
+  description: z.string().nullable().optional(),
+  level: z.enum(goalLevelValues).default(GoalLevel.Task),
+  owner_agent_name: z.string().nullable().optional(),
+})
+
+const templatePolicySchema = z.object({
+  name: nonEmpty,
+  tool_pattern: nonEmpty,
+  action: z.enum(policyActionValues).default(PolicyAction.Allow),
+  priority: z.number().int().min(0).default(0),
+  max_calls_per_hour: z.number().int().min(0).nullable().optional(),
+  agent_name: z.string().nullable().optional(),
+})
+
+export const CompanyTemplateInput = z.object({
+  name: nonEmpty,
+  description: z.string().default(''),
+  version: z.string().default('1.0.0'),
+  agents: z.array(templateAgentSchema).min(1),
+  goals: z.array(templateGoalSchema).optional().default([]),
+  policies: z.array(templatePolicySchema).optional().default([]),
+})
+export type CompanyTemplateInput = z.infer<typeof CompanyTemplateInput>
