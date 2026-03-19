@@ -21,7 +21,9 @@ import { CompanySelector } from '@/components/CompanySelector'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LiveIndicator } from '@/components/LiveIndicator'
 import { CommandPalette } from '@/components/CommandPalette'
+import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp'
 import { useRecentPages } from '@/hooks/useRecentPages'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
@@ -46,8 +48,14 @@ function getPageLabel(pathname: string): string {
 export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
   const location = useLocation()
   const { addRecentPage } = useRecentPages()
+
+  // Global keyboard shortcuts (g+a, g+i, Shift+?, etc.)
+  const { shortcuts } = useKeyboardShortcuts({
+    onToggleHelp: () => setShortcutsHelpOpen((prev) => !prev),
+  })
 
   // Track page visits for recent pages
   useEffect(() => {
@@ -71,6 +79,13 @@ export function DashboardLayout() {
     <div className="flex h-screen overflow-hidden">
       {/* Command Palette */}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
+      {/* Keyboard Shortcuts Help Modal */}
+      <KeyboardShortcutsHelp
+        open={shortcutsHelpOpen}
+        onClose={() => setShortcutsHelpOpen(false)}
+        shortcuts={shortcuts}
+      />
 
       {/* Mobile overlay */}
       {sidebarOpen && (
