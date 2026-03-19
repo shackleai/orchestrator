@@ -21,6 +21,7 @@ import { registerConfigCommand } from './commands/config-cmd.js'
 import { registerApprovalCommand } from './commands/approval.js'
 import { registerSecretCommand } from './commands/secret.js'
 import { registerQuotaCommand } from './commands/quota.js'
+import { handleError, setVerbose } from './errors.js'
 
 export const VERSION = '0.1.0'
 
@@ -30,6 +31,10 @@ program
   .name('shackleai')
   .description('ShackleAI Orchestrator — The Operating System for AI Agents')
   .version(VERSION)
+  .option('--verbose', 'Show full stack traces on errors')
+  .hook('preAction', () => {
+    setVerbose(program.opts().verbose === true)
+  })
 
 program
   .command('init')
@@ -71,5 +76,14 @@ const isDirectRun =
   process.argv[1]?.includes('@shackleai/orchestrator')
 
 if (isDirectRun) {
-  program.parse()
+  // Global error handlers — catch unhandled rejections and exceptions
+  process.on('unhandledRejection', (reason) => {
+    handleError(reason)
+  })
+
+  process.on('uncaughtException', (err) => {
+    handleError(err)
+  })
+
+  program.parseAsync().catch(handleError)
 }
