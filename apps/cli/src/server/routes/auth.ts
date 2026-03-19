@@ -167,13 +167,16 @@ export function authRouter(db: DatabaseProvider): Hono {
     // Create JWT
     const token = signJwt({ sub: user.id, email: user.email, role: user.role }, SESSION_TTL_MS)
 
-    // Store session (hash the token for lookup on logout)
+    // Store session (hash the token for lookup on logout).
+    // ON CONFLICT DO NOTHING handles the rare case where the same token is
+    // issued twice within the same second (same iat/exp/sub payload).
     const tokenHash = createHash('sha256').update(token).digest('hex')
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString()
 
     await db.query(
       `INSERT INTO user_sessions (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)
+       ON CONFLICT (token_hash) DO NOTHING`,
       [user.id, tokenHash, expiresAt],
     )
 
@@ -211,13 +214,14 @@ export function authRouter(db: DatabaseProvider): Hono {
     // Create JWT
     const token = signJwt({ sub: user.id, email: user.email, role: user.role }, SESSION_TTL_MS)
 
-    // Store session
+    // Store session. ON CONFLICT handles duplicate token hash (same second).
     const tokenHash = createHash('sha256').update(token).digest('hex')
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString()
 
     await db.query(
       `INSERT INTO user_sessions (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)
+       ON CONFLICT (token_hash) DO NOTHING`,
       [user.id, tokenHash, expiresAt],
     )
 
