@@ -2,9 +2,24 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>ShackleAI Dashboard</title>
+
+    <!-- PWA meta tags -->
+    <meta name="theme-color" content="#f59e0b" />
+    <meta name="description" content="ShackleAI — The Operating System for AI Agents" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ShackleAI" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Icons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
     <script>
       // Apply saved theme before first paint to prevent flash
       (function() {
@@ -22,5 +37,16 @@
   <body class="min-h-screen bg-background text-foreground antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Service worker registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').catch(function(err) {
+            console.warn('SW registration failed:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
