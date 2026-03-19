@@ -98,8 +98,8 @@ describe('config export', () => {
   })
 
   it('exportConfig scrubs databaseUrl and secret-containing keys', async () => {
-    // Write a config file with secrets
-    const configPath = join(testDir, 'config.json')
+    const { redactSensitiveFields } = await import('../src/config.js')
+
     const config = {
       mode: 'server',
       companyId: 'abc-123',
@@ -109,31 +109,8 @@ describe('config export', () => {
       authToken: 'tok_12345',
       issue_prefix: 'TEST',
     }
-    await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
 
-    // We test the logic directly by importing and using a custom path.
-    // Since exportConfig uses getConfigPath internally, we test via the
-    // redaction logic inline.
-    const sensitivePattern = /secret|token|password|key/i
-    const SAFE_KEYS = new Set([
-      'issue_prefix',
-      'dataDir',
-      'mode',
-      'companyId',
-      'companyName',
-      'port',
-    ])
-
-    const redacted: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(config)) {
-      if (k === 'databaseUrl') {
-        redacted[k] = '***REDACTED***'
-      } else if (!SAFE_KEYS.has(k) && sensitivePattern.test(k)) {
-        redacted[k] = '***REDACTED***'
-      } else {
-        redacted[k] = v
-      }
-    }
+    const redacted = redactSensitiveFields(config)
 
     expect(redacted.databaseUrl).toBe('***REDACTED***')
     expect(redacted.apiSecret).toBe('***REDACTED***')
@@ -141,6 +118,35 @@ describe('config export', () => {
     expect(redacted.companyName).toBe('Test Corp')
     expect(redacted.mode).toBe('server')
     expect(redacted.issue_prefix).toBe('TEST')
+  })
+
+  it('redactSensitiveFields recursively redacts nested llmKeys', async () => {
+    const { redactSensitiveFields } = await import('../src/config.js')
+
+    const config = {
+      mode: 'local',
+      companyId: 'abc-123',
+      companyName: 'Test Corp',
+      llmKeys: {
+        openai: 'sk-real-openai-key-12345',
+        anthropic: 'sk-ant-real-anthropic-key-67890',
+      },
+    }
+
+    const redacted = redactSensitiveFields(config)
+
+    // llmKeys should be an object, not flattened to a string
+    expect(typeof redacted.llmKeys).toBe('object')
+    expect(redacted.llmKeys).not.toBe('***REDACTED***')
+
+    // Each nested key value should be redacted
+    const llmKeys = redacted.llmKeys as Record<string, unknown>
+    expect(llmKeys.openai).toBe('***REDACTED***')
+    expect(llmKeys.anthropic).toBe('***REDACTED***')
+
+    // Non-sensitive fields preserved
+    expect(redacted.mode).toBe('local')
+    expect(redacted.companyName).toBe('Test Corp')
   })
 })
 
