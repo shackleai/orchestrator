@@ -23,25 +23,26 @@ import { worktreesRouter } from './routes/worktrees.js'
 import { toolCallsRouter } from './routes/tool-calls.js'
 import { commentsRouter } from './routes/comments.js'
 import { approvalsRouter } from './routes/approvals.js'
+import { secretsRouter } from './routes/secrets.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
 
 export interface CreateAppOptions {
   scheduler?: Scheduler
-  /** Skip API authentication — for testing only. NEVER set in production. */
+  /** Skip API authentication ï¿½ for testing only. NEVER set in production. */
   skipAuth?: boolean
 }
 
 export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hono {
   const app = new Hono()
 
-  // --- Health check — unauthenticated ---
+  // --- Health check ï¿½ unauthenticated ---
   app.get('/api/health', (c) => {
     return c.json({ status: 'ok', version: VERSION })
   })
 
-  // --- Global API authentication — protects all /api/* routes except /api/health ---
+  // --- Global API authentication ï¿½ protects all /api/* routes except /api/health ---
   if (!options?.skipAuth) {
     const apiAuthMiddleware = createApiAuth(db)
     app.use('/api/*', async (c, next) => {
@@ -66,6 +67,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', toolCallsRouter(db))
   app.route('/api/companies', commentsRouter(db, options?.scheduler))
   app.route('/api/companies', approvalsRouter(db))
+  app.route('/api/companies', secretsRouter(db))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)

@@ -50,3 +50,6 @@ export type { LicenseStatus, ActivationResult } from './license.js'
 export { WorktreeManager } from './worktree/index.js'
 
 export { DelegationService, DelegationError, rollUpParentStatus } from './delegation.js'
+
+export { SecretsManager, LogRedactor } from './secrets/index.js'
+export type { SecretRow, SecretListItem } from './secrets/index.js'

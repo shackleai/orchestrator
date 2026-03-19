@@ -242,3 +242,13 @@ export interface Approval {
   decided_at: string | null
   created_at: string
 }
+
+export interface Secret {
+  id: string
+  company_id: string
+  name: string
+  encrypted_value: string
+  created_by: string | null
+  created_at: Date
+  updated_at: Date
+}

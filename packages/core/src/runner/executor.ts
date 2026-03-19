@@ -38,6 +38,8 @@ import type { AdapterContext, AdapterModule, AdapterResult, GoalAncestry } from 
 import { getLastSessionState, saveSessionState } from '../adapters/index.js'
 import type { RunnerResult } from '../scheduler.js'
 import type { GovernanceEngine } from '../governance/index.js'
+import { SecretsManager } from '../secrets/index.js'
+import { LogRedactor } from '../secrets/index.js'
 
 /** Default timeout in seconds. */
 const DEFAULT_TIMEOUT_S = 300
@@ -83,6 +85,8 @@ export class HeartbeatExecutor {
   private adapterRegistry: AdapterRegistry
   private contextBuilder: ContextBuilder
   private governance: GovernanceEngine | null
+  private secretsManager: SecretsManager
+  private logRedactor: LogRedactor
 
   constructor(
     db: DatabaseProvider,
@@ -97,6 +101,8 @@ export class HeartbeatExecutor {
     this.adapterRegistry = adapterRegistry
     this.contextBuilder = new ContextBuilder(db)
     this.governance = governance ?? null
+    this.secretsManager = new SecretsManager(db)
+    this.logRedactor = new LogRedactor()
   }
 
   /**
@@ -222,13 +228,23 @@ export class HeartbeatExecutor {
           this.contextBuilder.build(agentId, companyId),
         ])
 
+      // -- Step 5b: Load secrets as env vars --
+      let secretEnv: Record<string, string> = {}
+      try {
+        secretEnv = await this.secretsManager.getAllDecrypted(companyId)
+        const secretValues = Object.values(secretEnv)
+        this.logRedactor.addSecrets(secretValues)
+      } catch {
+        // Non-fatal -- continue without secrets
+      }
+
       const ctx: AdapterContext = {
         agentId,
         companyId,
         task: task?.title ?? undefined,
         heartbeatRunId: runId,
         adapterConfig,
-        env: {},
+        env: { ...secretEnv },
         sessionState,
         recentActivity,
         assignedTasks,
@@ -273,6 +289,14 @@ export class HeartbeatExecutor {
         } else {
           throw err
         }
+      }
+
+      // -- Step 6b: Redact secrets from adapter output --
+      if (adapterResult.stdout) {
+        adapterResult = { ...adapterResult, stdout: this.logRedactor.redact(adapterResult.stdout) }
+      }
+      if (adapterResult.stderr) {
+        adapterResult = { ...adapterResult, stderr: this.logRedactor.redact(adapterResult.stderr) }
       }
 
       // ── Step 7: Log event to Observatory ────────────────────────────
