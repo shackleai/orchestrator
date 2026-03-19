@@ -40,6 +40,7 @@ import type { RunnerResult } from '../scheduler.js'
 import type { GovernanceEngine } from '../governance/index.js'
 import { SecretsManager } from '../secrets/index.js'
 import { LogRedactor } from '../secrets/index.js'
+import { HeartbeatEventLogger } from './event-logger.js'
 
 /** Default timeout in seconds. */
 const DEFAULT_TIMEOUT_S = 300
@@ -111,6 +112,7 @@ export class HeartbeatExecutor {
    */
   async execute(agentId: string, trigger: TriggerType): Promise<RunnerResult> {
     const runId = randomUUID()
+    const events = new HeartbeatEventLogger(this.db, runId)
 
     // ── Step 0: Load agent ──────────────────────────────────────────
     const agentResult = await this.db.query<AgentRow>(
@@ -153,6 +155,12 @@ export class HeartbeatExecutor {
     try {
       // ── Step 3: Budget check ────────────────────────────────────────
       const budget = await this.costTracker.checkBudget(companyId, agentId)
+
+      events.emit('budget_checked', {
+        withinBudget: budget.withinBudget,
+        percentUsed: budget.percentUsed,
+      })
+
       if (!budget.withinBudget) {
         const errMsg = `Budget exceeded (${budget.percentUsed.toFixed(1)}% used)`
         await this.markRunFailed(runId, errMsg)
@@ -168,6 +176,8 @@ export class HeartbeatExecutor {
           changes: { trigger, percentUsed: budget.percentUsed },
         })
 
+        events.emit('error', { message: errMsg })
+
         return { exitCode: 1, stderr: errMsg }
       }
 
@@ -177,8 +187,12 @@ export class HeartbeatExecutor {
         const errMsg = `Unknown adapter type: ${agent.adapter_type}`
         await this.markRunFailed(runId, errMsg)
         await this.markAgentIdle(agentId)
+        events.emit('error', { message: errMsg })
         return { exitCode: 1, stderr: errMsg }
       }
+
+
+      events.emit('adapter_loaded', { adapterType: agent.adapter_type })
 
       // Step 4b: Governance check
       if (this.governance) {
@@ -187,6 +201,13 @@ export class HeartbeatExecutor {
           agentId,
           agent.adapter_type,
         )
+
+
+        events.emit('governance_checked', {
+          allowed: policyResult.allowed,
+          policyId: policyResult.policyId ?? null,
+          reason: policyResult.reason ?? null,
+        })
 
         if (!policyResult.allowed) {
           const errMsg = `Governance violation: ${policyResult.reason}`
@@ -207,6 +228,8 @@ export class HeartbeatExecutor {
               reason: policyResult.reason,
             },
           })
+
+          events.emit('error', { message: errMsg })
 
           return { exitCode: 1, stderr: errMsg }
         }
@@ -255,6 +278,13 @@ export class HeartbeatExecutor {
         systemContext,
       }
 
+      events.emit('context_built', {
+        hasTask: !!task,
+        hasSessionState: !!sessionState,
+        recentActivityCount: recentActivity.length,
+        unreadCommentsCount: unreadComments.length,
+      })
+
       // Mark run as running
       await this.db.query(
         `UPDATE heartbeat_runs SET status = $1, started_at = NOW(), session_id_before = $2
@@ -268,6 +298,8 @@ export class HeartbeatExecutor {
           ? adapterConfig.timeout
           : DEFAULT_TIMEOUT_S
       const timeoutMs = timeoutS * 1000
+
+      events.emit('adapter_started', { adapterType: agent.adapter_type, timeoutS })
 
       let adapterResult: AdapterResult
       let timedOut = false
@@ -298,6 +330,12 @@ export class HeartbeatExecutor {
       if (adapterResult.stderr) {
         adapterResult = { ...adapterResult, stderr: this.logRedactor.redact(adapterResult.stderr) }
       }
+
+      events.emit('adapter_finished', {
+        exitCode: adapterResult.exitCode,
+        timedOut,
+        adapterType: agent.adapter_type,
+      })
 
       // ── Step 7: Log event to Observatory ────────────────────────────
       const finalStatus = timedOut
@@ -334,9 +372,23 @@ export class HeartbeatExecutor {
         })
       }
 
+
+      if (adapterResult.usage) {
+        events.emit('cost_recorded', {
+          provider: adapterResult.usage.provider,
+          model: adapterResult.usage.model,
+          costCents: adapterResult.usage.costCents,
+        })
+      }
+
       // ── Step 9: Save session state ──────────────────────────────────
       if (adapterResult.sessionState) {
         await saveSessionState(runId, adapterResult.sessionState, this.db)
+      }
+
+
+      if (adapterResult.sessionState) {
+        events.emit('session_saved', { sessionState: adapterResult.sessionState })
       }
 
       // ── Step 9b: Record tool calls ─────────────────────────────────
@@ -423,6 +475,8 @@ export class HeartbeatExecutor {
         action: 'heartbeat_error',
         changes: { trigger, error: errMsg },
       })
+
+      events.emit('error', { message: errMsg })
 
       await this.markRunFailed(runId, errMsg)
       await this.markAgentIdle(agentId)

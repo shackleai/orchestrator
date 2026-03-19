@@ -145,3 +145,92 @@ describe('heartbeats routes', () => {
     expect(res.status).toBe(404)
   })
 })
+
+describe('heartbeat run events routes', () => {
+  let db: PGliteProvider
+  let app: ReturnType<typeof createApp>
+  let companyId: string
+  let agentId: string
+
+  beforeAll(async () => {
+    db = new PGliteProvider()
+    await runMigrations(db)
+    app = createApp(db, { skipAuth: true })
+    companyId = await createCompany(app, 'Events Corp')
+    agentId = await createAgent(app, companyId)
+  })
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  it('GET /api/companies/:id/heartbeats/:runId/events returns empty array when no events', async () => {
+    const runId = await insertHeartbeatRun(db, companyId, agentId)
+
+    const res = await app.request(
+      `/api/companies/${companyId}/heartbeats/${runId}/events`,
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: unknown[] }
+    expect(Array.isArray(body.data)).toBe(true)
+    expect(body.data).toHaveLength(0)
+  })
+
+  it('GET /api/companies/:id/heartbeats/:runId/events returns events in chronological order', async () => {
+    const runId = await insertHeartbeatRun(db, companyId, agentId)
+
+    // Insert events directly
+    await db.query(
+      `INSERT INTO heartbeat_run_events (heartbeat_run_id, event_type, payload)
+       VALUES ($1, $2, $3)`,
+      [runId, 'adapter_loaded', JSON.stringify({ adapterType: 'process' })],
+    )
+    await db.query(
+      `INSERT INTO heartbeat_run_events (heartbeat_run_id, event_type, payload)
+       VALUES ($1, $2, $3)`,
+      [runId, 'budget_checked', JSON.stringify({ withinBudget: true })],
+    )
+    await db.query(
+      `INSERT INTO heartbeat_run_events (heartbeat_run_id, event_type)
+       VALUES ($1, $2)`,
+      [runId, 'adapter_started'],
+    )
+
+    const res = await app.request(
+      `/api/companies/${companyId}/heartbeats/${runId}/events`,
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: Array<{
+        id: string
+        heartbeat_run_id: string
+        event_type: string
+        payload: Record<string, unknown> | null
+        created_at: string
+      }>
+    }
+    expect(body.data).toHaveLength(3)
+    expect(body.data[0].event_type).toBe('adapter_loaded')
+    expect(body.data[0].heartbeat_run_id).toBe(runId)
+    expect(body.data[0].payload).toEqual({ adapterType: 'process' })
+    expect(body.data[1].event_type).toBe('budget_checked')
+    expect(body.data[2].event_type).toBe('adapter_started')
+    expect(body.data[2].payload).toBeNull()
+  })
+
+  it('GET /api/companies/:id/heartbeats/:runId/events returns 404 for non-existent run', async () => {
+    const res = await app.request(
+      `/api/companies/${companyId}/heartbeats/00000000-0000-0000-0000-000000000000/events`,
+    )
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Heartbeat run not found')
+  })
+
+  it('GET /api/companies/:id/heartbeats/:runId/events returns 404 for non-existent company', async () => {
+    const res = await app.request(
+      `/api/companies/00000000-0000-0000-0000-000000000000/heartbeats/00000000-0000-0000-0000-000000000001/events`,
+    )
+    expect(res.status).toBe(404)
+  })
+})

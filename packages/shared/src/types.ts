@@ -262,3 +262,22 @@ export interface AgentConfigRevision {
   change_reason: string | null
   created_at: string
 }
+
+export type HeartbeatRunEventType =
+  | 'adapter_loaded'
+  | 'governance_checked'
+  | 'budget_checked'
+  | 'context_built'
+  | 'adapter_started'
+  | 'adapter_finished'
+  | 'cost_recorded'
+  | 'session_saved'
+  | 'error'
+
+export interface HeartbeatRunEvent {
+  id: string
+  heartbeat_run_id: string
+  event_type: HeartbeatRunEventType
+  payload: Record<string, unknown> | null
+  created_at: string
+}
