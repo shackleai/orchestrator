@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import { createHash, randomBytes } from 'node:crypto'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { Agent, AgentApiKey } from '@shackleai/shared'
+import type { Agent, AgentApiKey, AgentConfigRevision } from '@shackleai/shared'
 import { CreateAgentInput, UpdateAgentInput, TriggerType } from '@shackleai/shared'
 import { AgentStatus, AgentApiKeyStatus } from '@shackleai/shared'
 import type { Scheduler } from '@shackleai/core'
@@ -15,6 +15,43 @@ import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
+
+/**
+ * Snapshot the current agent config as a revision before updating.
+ * Returns the new revision number.
+ */
+async function createConfigRevision(
+  db: DatabaseProvider,
+  agent: Agent,
+  changedBy?: string | null,
+  changeReason?: string | null,
+): Promise<number> {
+  const maxResult = await db.query<{ max_rev: number | null }>(
+    `SELECT MAX(revision_number) as max_rev FROM agent_config_revisions WHERE agent_id = $1`,
+    [agent.id],
+  )
+  const nextRev = (maxResult.rows[0]?.max_rev ?? 0) + 1
+
+  const configSnapshot = {
+    name: agent.name,
+    title: agent.title,
+    role: agent.role,
+    status: agent.status,
+    reports_to: agent.reports_to,
+    capabilities: agent.capabilities,
+    adapter_type: agent.adapter_type,
+    adapter_config: agent.adapter_config,
+    budget_monthly_cents: agent.budget_monthly_cents,
+  }
+
+  await db.query(
+    `INSERT INTO agent_config_revisions (agent_id, revision_number, config_snapshot, changed_by, change_reason)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [agent.id, nextRev, JSON.stringify(configSnapshot), changedBy ?? null, changeReason ?? null],
+  )
+
+  return nextRev
+}
 export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>()
 
@@ -141,9 +178,9 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
 
-    // Verify agent exists and belongs to company
+    // Fetch full agent for revision snapshot
     const existing = await db.query<Agent>(
-      `SELECT id FROM agents WHERE id = $1 AND company_id = $2`,
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
     )
     if (existing.rows.length === 0) {
@@ -173,6 +210,11 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ data: result.rows[0] })
     }
 
+    // Snapshot current config as a revision before applying changes
+    const changeReason = (body as Record<string, unknown>)?.change_reason as string | undefined
+    const changedBy = (body as Record<string, unknown>)?.changed_by as string | undefined
+    await createConfigRevision(db, existing.rows[0], changedBy, changeReason)
+
     const setClauses = fields
       .map((f, i) => {
         if (f === 'adapter_config') return `${f} = $${i + 3}`
@@ -194,6 +236,96 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     )
 
     return c.json({ data: result.rows[0] })
+  })
+
+  // GET /api/companies/:id/agents/:agentId/revisions -- list config revisions
+  app.get('/:id/agents/:agentId/revisions', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const agentId = c.req.param('agentId')
+
+    const agentResult = await db.query<Agent>(
+      `SELECT id FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+    if (agentResult.rows.length === 0) {
+      return c.json({ error: 'Agent not found' }, 404)
+    }
+
+    const { limit, offset } = parsePagination(c)
+    const result = await db.query<AgentConfigRevision>(
+      `SELECT * FROM agent_config_revisions WHERE agent_id = $1
+       ORDER BY revision_number DESC LIMIT $2 OFFSET $3`,
+      [agentId, limit, offset],
+    )
+
+    return c.json({ data: result.rows })
+  })
+
+  // POST /api/companies/:id/agents/:agentId/rollback/:revisionId -- rollback to a revision
+  app.post('/:id/agents/:agentId/rollback/:revisionId', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const agentId = c.req.param('agentId')
+    const revisionId = c.req.param('revisionId')
+
+    const agentResult = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+    if (agentResult.rows.length === 0) {
+      return c.json({ error: 'Agent not found' }, 404)
+    }
+
+    const revResult = await db.query<AgentConfigRevision>(
+      `SELECT * FROM agent_config_revisions WHERE id = $1 AND agent_id = $2`,
+      [revisionId, agentId],
+    )
+    if (revResult.rows.length === 0) {
+      return c.json({ error: 'Revision not found' }, 404)
+    }
+
+    const revision = revResult.rows[0]
+    const snapshot = typeof revision.config_snapshot === 'string'
+      ? JSON.parse(revision.config_snapshot) as Record<string, unknown>
+      : revision.config_snapshot
+
+    // Snapshot current config before rollback
+    await createConfigRevision(db, agentResult.rows[0], null, `Rollback to revision ${revision.revision_number}`)
+
+    const result = await db.query<Agent>(
+      `UPDATE agents SET
+         name = $3,
+         title = $4,
+         role = $5,
+         status = $6,
+         reports_to = $7,
+         capabilities = $8,
+         adapter_type = $9,
+         adapter_config = $10,
+         budget_monthly_cents = $11,
+         updated_at = NOW()
+       WHERE id = $1 AND company_id = $2
+       RETURNING *`,
+      [
+        agentId,
+        companyId,
+        snapshot.name,
+        snapshot.title ?? null,
+        snapshot.role,
+        snapshot.status,
+        snapshot.reports_to ?? null,
+        snapshot.capabilities ?? null,
+        snapshot.adapter_type,
+        JSON.stringify(snapshot.adapter_config ?? {}),
+        snapshot.budget_monthly_cents ?? 0,
+      ],
+    )
+
+    return c.json({
+      data: {
+        agent: result.rows[0],
+        rolled_back_to: revision.revision_number,
+      },
+    })
   })
 
   // POST /api/companies/:id/agents/:agentId/pause — set status='paused'

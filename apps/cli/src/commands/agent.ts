@@ -5,7 +5,7 @@
 import type { Command } from 'commander'
 import * as p from '@clack/prompts'
 import { AdapterType, AgentRole } from '@shackleai/shared'
-import type { Agent } from '@shackleai/shared'
+import type { Agent, AgentConfigRevision } from '@shackleai/shared'
 import { apiClient, getCompanyId } from '../api-client.js'
 
 interface ApiResponse<T> {
@@ -169,6 +169,57 @@ async function terminateAgent(id: string): Promise<void> {
   console.log(`Agent ${body.data.name} terminated.`)
 }
 
+
+function formatRevisionTable(revisions: AgentConfigRevision[]): void {
+  if (revisions.length === 0) {
+    console.log('No revisions found.')
+    return
+  }
+
+  const rows = revisions.map((r) => ({
+    ID: r.id.slice(0, 8),
+    Rev: r.revision_number,
+    'Changed By': r.changed_by ?? '-',
+    Reason: r.change_reason ? r.change_reason.slice(0, 40) : '-',
+    'Created At': new Date(r.created_at).toLocaleString(),
+  }))
+
+  console.table(rows)
+}
+
+async function listRevisions(agentId: string): Promise<void> {
+  const companyId = await getCompanyId()
+  const res = await apiClient(
+    `/api/companies/${companyId}/agents/${agentId}/revisions`,
+  )
+
+  if (!res.ok) {
+    const body = (await res.json()) as ApiResponse<never>
+    console.error(`Error: ${body.error ?? res.statusText}`)
+    process.exit(1)
+  }
+
+  const body = (await res.json()) as ApiResponse<AgentConfigRevision[]>
+  formatRevisionTable(body.data)
+}
+
+async function rollbackAgent(agentId: string, revisionId: string): Promise<void> {
+  const companyId = await getCompanyId()
+  const res = await apiClient(
+    `/api/companies/${companyId}/agents/${agentId}/rollback/${revisionId}`,
+    { method: 'POST' },
+  )
+
+  if (!res.ok) {
+    const body = (await res.json()) as ApiResponse<never>
+    console.error(`Error: ${body.error ?? res.statusText}`)
+    process.exit(1)
+  }
+
+  const body = (await res.json()) as ApiResponse<{ agent: Agent; rolled_back_to: number }>
+  console.log(`Agent ${body.data.agent.name} rolled back to revision ${body.data.rolled_back_to}.`)
+}
+
 export function registerAgentCommand(program: Command): void {
   const agent = program
     .command('agent')
@@ -210,5 +261,23 @@ export function registerAgentCommand(program: Command): void {
     .description('Terminate an agent')
     .action(async (id: string) => {
       await terminateAgent(id)
+    })
+
+
+  agent
+    .command('revisions')
+    .argument('<agentId>', 'Agent ID')
+    .description('List config revisions for an agent')
+    .action(async (agentId: string) => {
+      await listRevisions(agentId)
+    })
+
+  agent
+    .command('rollback')
+    .argument('<agentId>', 'Agent ID')
+    .argument('<revisionId>', 'Revision ID to rollback to')
+    .description('Rollback agent config to a previous revision')
+    .action(async (agentId: string, revisionId: string) => {
+      await rollbackAgent(agentId, revisionId)
     })
 }

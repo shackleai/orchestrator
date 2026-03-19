@@ -16,6 +16,7 @@ import * as m014 from './014_tool_calls.js'
 import * as m015 from './015_indexes.js'
 import * as m016 from './016_approvals.js'
 import * as m017 from './017_secrets.js'
+import * as m018 from './018_agent_config_revisions.js'
 
 export interface Migration {
   name: string
@@ -40,6 +41,7 @@ const migrations: Migration[] = [
   m015,
   m016,
   m017,
+  m018,
 ]
 
 /**

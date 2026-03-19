@@ -252,3 +252,13 @@ export interface Secret {
   created_at: Date
   updated_at: Date
 }
+
+export interface AgentConfigRevision {
+  id: string
+  agent_id: string
+  revision_number: number
+  config_snapshot: Record<string, unknown>
+  changed_by: string | null
+  change_reason: string | null
+  created_at: string
+}
