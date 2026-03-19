@@ -434,14 +434,16 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     const runResult = await scheduler.triggerNow(agentId, TriggerType.Manual)
 
     if (!runResult) {
-      // Coalesced (agent already running) or failed to start
+      // Coalesced (agent already running -- request queued) or failed to start
       const agent = agentResult.rows[0]
+      const isAgentRunning = scheduler.isRunning(agentId)
       return c.json({
         data: {
           agent,
           triggered: false,
-          reason: scheduler.isRunning(agentId)
-            ? 'Agent heartbeat already in progress'
+          queued: isAgentRunning,
+          reason: isAgentRunning
+            ? 'Agent heartbeat already in progress -- wakeup request queued'
             : 'Execution could not be started',
         },
       })

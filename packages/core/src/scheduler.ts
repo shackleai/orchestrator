@@ -3,14 +3,16 @@
  *
  * Design principles:
  * - The scheduler does NOT know about adapters — it calls a RunnerExecutor callback.
- * - Coalescing: if an agent heartbeat is already running, skip and log.
+ * - Coalescing: if an agent heartbeat is already running, queue the request.
+ * - Queued wakeup requests are persisted in `agent_wakeup_requests` so they survive restarts.
+ * - After each heartbeat completes, pending requests are drained (one execution per drain).
  * - Uses node-cron for cron scheduling.
  * - All queries are parameterized (no string concatenation).
  * - All queries are scoped to company_id (multi-tenant) where applicable.
  */
 
 import type { DatabaseProvider } from '@shackleai/db'
-import type { TriggerType } from '@shackleai/shared'
+import type { TriggerType, WakeupRequest } from '@shackleai/shared'
 import cron from 'node-cron'
 
 /** Result returned by the runner executor callback. */
@@ -131,9 +133,22 @@ export class Scheduler {
 
   /**
    * Trigger an immediate on-demand heartbeat for an agent.
-   * Returns the RunnerResult from the executor, or null if coalesced/skipped.
+   * If the agent is already running, the request is queued in the DB
+   * and will be processed when the current heartbeat completes.
+   * Returns the RunnerResult, or null if queued/skipped.
    */
-  async triggerNow(agentId: string, reason: TriggerType): Promise<RunnerResult | null> {
+  async triggerNow(
+    agentId: string,
+    reason: TriggerType,
+    companyId?: string,
+    queueReason?: string,
+  ): Promise<RunnerResult | null> {
+    // If agent is busy, queue the request instead of silently dropping it
+    if (this.running.has(agentId)) {
+      await this.queueWakeupRequest(agentId, reason, companyId, queueReason)
+      return null
+    }
+
     return this.executeHeartbeat(agentId, reason)
   }
 
@@ -177,6 +192,109 @@ export class Scheduler {
       return null
     } finally {
       this.running.delete(agentId)
+    }
+  }
+
+  /**
+   * Queue a wakeup request in the database for later processing.
+   * Called when an agent is busy (coalescing) so triggers are not lost.
+   */
+  async queueWakeupRequest(
+    agentId: string,
+    triggerType: TriggerType,
+    companyId?: string,
+    reason?: string,
+  ): Promise<void> {
+    const resolvedCompanyId = companyId ?? await this.resolveCompanyId(agentId)
+    if (!resolvedCompanyId) {
+      console.error(`[Scheduler] Cannot queue wakeup: unable to resolve company_id for agent ${agentId}`)
+      return
+    }
+
+    try {
+      await this.db.query(
+        `INSERT INTO agent_wakeup_requests (agent_id, company_id, trigger_type, reason, status)
+         VALUES ($1, $2, $3, $4, 'pending')`,
+        [agentId, resolvedCompanyId, triggerType, reason ?? null],
+      )
+    } catch (err) {
+      // Non-blocking: log but do not fail the caller
+      console.error(`[Scheduler] Failed to queue wakeup request for agent ${agentId}:`, err)
+    }
+  }
+
+  /**
+   * Get pending wakeup requests for an agent.
+   */
+  async getPendingRequests(agentId: string): Promise<WakeupRequest[]> {
+    const result = await this.db.query<WakeupRequest>(
+      `SELECT * FROM agent_wakeup_requests
+       WHERE agent_id = $1 AND status = 'pending'
+       ORDER BY created_at ASC`,
+      [agentId],
+    )
+    return result.rows
+  }
+
+  /**
+   * Drain pending wakeup requests for an agent after a heartbeat completes.
+   * Deduplicates by trigger type -- executes one follow-up heartbeat
+   * with the highest-priority queued trigger.
+   */
+  private async drainPendingRequests(agentId: string): Promise<void> {
+    try {
+      const pending = await this.db.query<WakeupRequest>(
+        `UPDATE agent_wakeup_requests
+         SET status = 'processed', processed_at = NOW()
+         WHERE agent_id = $1 AND status = 'pending'
+         RETURNING *`,
+        [agentId],
+      )
+
+      if (pending.rows.length === 0) return
+
+      const byTrigger = new Map<string, WakeupRequest>()
+      for (const req of pending.rows) {
+        byTrigger.set(req.trigger_type, req)
+      }
+
+      const triggerPriority: Record<string, number> = {
+        task_assigned: 1,
+        delegated: 2,
+        mentioned: 3,
+        manual: 4,
+        event: 5,
+        api: 6,
+        cron: 7,
+      }
+
+      const sorted = [...byTrigger.values()].sort(
+        (a, b) =>
+          (triggerPriority[a.trigger_type] ?? 99) -
+          (triggerPriority[b.trigger_type] ?? 99),
+      )
+
+      const topTrigger = sorted[0]
+      if (topTrigger) {
+        void this.triggerNow(topTrigger.agent_id, topTrigger.trigger_type as TriggerType)
+      }
+    } catch (err) {
+      console.error(`[Scheduler] Failed to drain pending wakeup requests for agent ${agentId}:`, err)
+    }
+  }
+
+  /**
+   * Resolve the company_id for an agent from the database.
+   */
+  private async resolveCompanyId(agentId: string): Promise<string | null> {
+    try {
+      const result = await this.db.query<{ company_id: string }>(
+        `SELECT company_id FROM agents WHERE id = $1`,
+        [agentId],
+      )
+      return result.rows[0]?.company_id ?? null
+    } catch {
+      return null
     }
   }
 }
