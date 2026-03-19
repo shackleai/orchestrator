@@ -325,6 +325,21 @@ export interface IssueLabel {
 
 
 // ---------------------------------------------------------------------------
+// Assets (company-level file storage)
+// ---------------------------------------------------------------------------
+
+export interface Asset {
+  id: string
+  company_id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  storage_key: string
+  uploaded_by: string | null
+  created_at: Date
+}
+
+// ---------------------------------------------------------------------------
 // Issue Attachments & Work Products
 // ---------------------------------------------------------------------------
 
@@ -530,5 +545,19 @@ export interface WakeupRequest {
   status: 'pending' | 'processed' | 'expired'
   created_at: string
   processed_at: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Workspace Operations — immutable audit trail for agent workspace activity
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceOperation {
+  id: string
+  workspace_id: string
+  agent_id: string
+  operation_type: string
+  file_path: string | null
+  details: Record<string, unknown>
+  created_at: Date
 }
 
