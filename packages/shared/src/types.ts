@@ -11,6 +11,7 @@ export interface Company {
   issue_counter: number
   budget_monthly_cents: number
   spent_monthly_cents: number
+  default_honesty_checklist: string[] | null
   require_approval: boolean
   created_at: Date
   updated_at: Date
@@ -34,6 +35,11 @@ export interface Agent {
   updated_at: Date
 }
 
+export interface HonestyChecklistItem {
+  label: string
+  checked: boolean
+}
+
 export interface Issue {
   id: string
   company_id: string
@@ -47,6 +53,7 @@ export interface Issue {
   status: string
   priority: string
   assignee_agent_id: string | null
+  honesty_checklist: HonestyChecklistItem[] | null
   started_at: Date | null
   completed_at: Date | null
   created_at: Date

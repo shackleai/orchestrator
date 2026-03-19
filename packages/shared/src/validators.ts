@@ -44,6 +44,7 @@ export const CreateCompanyInput = z.object({
     .default(CompanyStatus.Active),
   issue_prefix: nonEmpty,
   budget_monthly_cents: z.number().int().min(0).optional().default(0),
+  default_honesty_checklist: z.array(z.string().min(1)).nullable().optional(),
 })
 export type CreateCompanyInput = z.infer<typeof CreateCompanyInput>
 
@@ -53,6 +54,7 @@ export const UpdateCompanyInput = z.object({
   status: z.enum(companyStatusValues).optional(),
   issue_prefix: nonEmpty.optional(),
   budget_monthly_cents: z.number().int().min(0).optional(),
+  default_honesty_checklist: z.array(z.string().min(1)).nullable().optional(),
 })
 export type UpdateCompanyInput = z.infer<typeof UpdateCompanyInput>
 
@@ -101,6 +103,12 @@ const issuePriorityValues = Object.values(IssuePriority) as [
   ...string[],
 ]
 
+/** A single item in an honesty checklist — label + checked state. */
+export const HonestyChecklistItemSchema = z.object({
+  label: nonEmpty,
+  checked: z.boolean().default(false),
+})
+
 export const CreateIssueInput = z.object({
   company_id: uuid,
   title: nonEmpty,
@@ -114,6 +122,7 @@ export const CreateIssueInput = z.object({
     .optional()
     .default(IssuePriority.Medium),
   assignee_agent_id: uuid.nullable().optional(),
+  honesty_checklist: z.array(HonestyChecklistItemSchema).nullable().optional(),
 })
 export type CreateIssueInput = z.infer<typeof CreateIssueInput>
 
@@ -126,6 +135,7 @@ export const UpdateIssueInput = z.object({
   status: z.enum(issueStatusValues).optional(),
   priority: z.enum(issuePriorityValues).optional(),
   assignee_agent_id: uuid.nullable().optional(),
+  honesty_checklist: z.array(HonestyChecklistItemSchema).nullable().optional(),
 })
 export type UpdateIssueInput = z.infer<typeof UpdateIssueInput>
 
@@ -142,6 +152,12 @@ export const DelegateIssueInput = z.object({
     .min(1),
 })
 export type DelegateIssueInput = z.infer<typeof DelegateIssueInput>
+
+/** Input for setting/updating an issue's honesty checklist. */
+export const UpdateChecklistInput = z.object({
+  items: z.array(HonestyChecklistItemSchema).min(1),
+})
+export type UpdateChecklistInput = z.infer<typeof UpdateChecklistInput>
 
 // ---------------------------------------------------------------------------
 // Goal

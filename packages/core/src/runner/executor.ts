@@ -42,6 +42,7 @@ import { SecretsManager } from '../secrets/index.js'
 import { LogRedactor } from '../secrets/index.js'
 import { HeartbeatEventLogger } from './event-logger.js'
 import type { QuotaManager } from '../quota/index.js'
+import { checkHonestyGate } from '../honesty-gate.js'
 
 /** Default timeout in seconds. */
 const DEFAULT_TIMEOUT_S = 300
@@ -434,21 +435,58 @@ export class HeartbeatExecutor {
       // ── Step 9c: Update task status if agent reported one ──────────
       if (adapterResult.taskStatus && task) {
         try {
-          await this.db.query(
-            `UPDATE issues SET status = $1, updated_at = NOW() WHERE id = $2`,
-            [adapterResult.taskStatus, task.id],
-          )
-          this.observatory.logEvent({
-            company_id: companyId,
-            entity_type: 'issue',
-            entity_id: task.id,
-            actor_type: 'agent',
-            actor_id: agentId,
-            action: `task_${adapterResult.taskStatus}`,
-            changes: { title: task.title, newStatus: adapterResult.taskStatus },
-          })
+          // Honesty Gate: if agent is marking task as done, verify checklist first
+          if (adapterResult.taskStatus === 'done') {
+            const gate = await checkHonestyGate(this.db, task.id, companyId)
+            if (!gate.passed) {
+              this.observatory.logEvent({
+                company_id: companyId,
+                entity_type: 'issue',
+                entity_id: task.id,
+                actor_type: 'agent',
+                actor_id: agentId,
+                action: 'honesty_gate_blocked',
+                changes: {
+                  title: task.title,
+                  reason: gate.reason,
+                  uncheckedItems: gate.uncheckedItems ?? [],
+                },
+              })
+              events.emit('error', {
+                message: `Honesty gate blocked task completion: ${gate.reason}`,
+              })
+            } else {
+              await this.db.query(
+                `UPDATE issues SET status = $1, updated_at = NOW() WHERE id = $2`,
+                [adapterResult.taskStatus, task.id],
+              )
+              this.observatory.logEvent({
+                company_id: companyId,
+                entity_type: 'issue',
+                entity_id: task.id,
+                actor_type: 'agent',
+                actor_id: agentId,
+                action: `task_${adapterResult.taskStatus}`,
+                changes: { title: task.title, newStatus: adapterResult.taskStatus },
+              })
+            }
+          } else {
+            await this.db.query(
+              `UPDATE issues SET status = $1, updated_at = NOW() WHERE id = $2`,
+              [adapterResult.taskStatus, task.id],
+            )
+            this.observatory.logEvent({
+              company_id: companyId,
+              entity_type: 'issue',
+              entity_id: task.id,
+              actor_type: 'agent',
+              actor_id: agentId,
+              action: `task_${adapterResult.taskStatus}`,
+              changes: { title: task.title, newStatus: adapterResult.taskStatus },
+            })
+          }
         } catch {
-          // Best-effort — don't fail the heartbeat for status update errors
+          // Best-effort — don’t fail the heartbeat for status update errors
         }
       }
 

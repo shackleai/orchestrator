@@ -5,10 +5,10 @@
 import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Issue } from '@shackleai/shared'
-import { CreateIssueInput, UpdateIssueInput, DelegateIssueInput } from '@shackleai/shared'
+import { CreateIssueInput, UpdateIssueInput, DelegateIssueInput, UpdateChecklistInput } from '@shackleai/shared'
 import { IssueStatus, TriggerType } from '@shackleai/shared'
 import type { Scheduler } from '@shackleai/core'
-import { DelegationService, DelegationError, rollUpParentStatus } from '@shackleai/core'
+import { DelegationService, DelegationError, rollUpParentStatus, checkHonestyGate } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 import { parsePagination } from '../pagination.js'
@@ -75,7 +75,7 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400)
     }
 
-    const { title, description, parent_id, goal_id, project_id, status, priority, assignee_agent_id } =
+    const { title, description, parent_id, goal_id, project_id, status, priority, assignee_agent_id, honesty_checklist } =
       parsed.data
 
     // Atomically increment company issue_counter and get prefix + new counter value
@@ -95,8 +95,8 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     const result = await db.query<Issue>(
       `INSERT INTO issues
          (company_id, identifier, issue_number, title, description, parent_id,
-          goal_id, project_id, status, priority, assignee_agent_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          goal_id, project_id, status, priority, assignee_agent_id, honesty_checklist)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         companyId,
@@ -110,6 +110,7 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
         status,
         priority,
         assignee_agent_id ?? null,
+        honesty_checklist ? JSON.stringify(honesty_checklist) : null,
       ],
     )
 
@@ -247,8 +248,30 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       }
     }
 
+    // Honesty Gate: if transitioning to "done", verify checklist is complete
+    if (updates.status === IssueStatus.Done) {
+      const gate = await checkHonestyGate(db, issueId!, companyId!)
+      if (!gate.passed) {
+        return c.json(
+          {
+            error: 'Honesty gate check failed',
+            reason: gate.reason,
+            unchecked_items: gate.uncheckedItems ?? [],
+          },
+          400,
+        )
+      }
+    }
+
     const setClauses = fields.map((f, i) => `${f} = $${i + 3}`).join(', ')
-    const values = fields.map((f) => updates[f])
+    const values = fields.map((f) => {
+      const val = updates[f]
+      // Serialize arrays/objects to JSON for JSONB columns
+      if (f === 'honesty_checklist' && val !== null && val !== undefined) {
+        return JSON.stringify(val)
+      }
+      return val
+    })
 
     const result = await db.query<Issue>(
       `UPDATE issues SET ${setClauses}, updated_at = NOW()
@@ -379,6 +402,43 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       }
       throw err
     }
+  })
+
+
+  // PUT /api/companies/:id/issues/:issueId/checklist -- set or update honesty checklist
+  app.put('/:id/issues/:issueId/checklist', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const issueId = c.req.param('issueId')
+
+    // Verify issue exists and belongs to company
+    const existing = await db.query<Pick<Issue, 'id'>>(
+      `SELECT id FROM issues WHERE id = $1 AND company_id = $2`,
+      [issueId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Issue not found' }, 404)
+    }
+
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
+
+    const parsed = UpdateChecklistInput.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400)
+    }
+
+    const result = await db.query<Issue>(
+      `UPDATE issues SET honesty_checklist = $1, updated_at = NOW()
+       WHERE id = $2 AND company_id = $3
+       RETURNING *`,
+      [JSON.stringify(parsed.data.items), issueId, companyId],
+    )
+
+    return c.json({ data: result.rows[0] })
   })
 
   return app
