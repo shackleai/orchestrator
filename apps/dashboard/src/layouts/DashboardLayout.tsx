@@ -18,6 +18,7 @@ import { UpgradeBanner } from '@/components/UpgradeBanner'
 import { LicenseStatus } from '@/components/LicenseStatus'
 import { CompanySelector } from '@/components/CompanySelector'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { LiveIndicator } from '@/components/LiveIndicator'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
@@ -125,6 +126,9 @@ export function DashboardLayout() {
           <h1 className="text-sm font-medium text-muted-foreground">
             Dashboard
           </h1>
+          <div className="ml-auto">
+            <LiveIndicator />
+          </div>
         </header>
 
         {/* Page content */}

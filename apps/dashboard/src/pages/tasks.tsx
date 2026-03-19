@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { ListTodo, Plus, Loader2 } from 'lucide-react'
 import {
   Table,
@@ -228,6 +229,7 @@ function CreateTaskForm({
 
 export function TasksPage() {
   const companyId = useCompanyId()
+  const tasksInterval = usePollingInterval(POLLING_INTERVALS.tasks)
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
@@ -268,6 +270,7 @@ export function TasksPage() {
         },
       ),
     enabled: !!companyId,
+    refetchInterval: tasksInterval,
   })
 
   const hasMore = (rawTasks?.length ?? 0) > TASKS_PAGE_SIZE

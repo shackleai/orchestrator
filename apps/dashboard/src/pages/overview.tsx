@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import {
   Bot,
   ListTodo,
@@ -108,11 +109,12 @@ function OverviewEmpty() {
 
 export function OverviewPage() {
   const companyId = useCompanyId()
+  const overviewInterval = usePollingInterval(POLLING_INTERVALS.overview)
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ['dashboard', companyId],
     queryFn: () => fetchDashboard(companyId!),
     enabled: !!companyId,
-    refetchInterval: 15_000,
+    refetchInterval: overviewInterval,
   })
 
   const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({

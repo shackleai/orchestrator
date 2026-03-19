@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { Activity } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -65,6 +66,7 @@ function ActivityEmpty() {
 
 export function ActivityPage() {
   const companyId = useCompanyId()
+  const activityInterval = usePollingInterval(POLLING_INTERVALS.activity)
   const [entityType, setEntityType] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -100,7 +102,7 @@ export function ActivityPage() {
         },
       ),
     enabled: !!companyId,
-    refetchInterval: 10_000,
+    refetchInterval: activityInterval,
   })
 
   const hasMore = (rawEntries?.length ?? 0) > ACTIVITY_PAGE_SIZE

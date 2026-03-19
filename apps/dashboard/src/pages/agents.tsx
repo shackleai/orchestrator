@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
 import { useDebounce } from '@/hooks/useDebounce'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { Bot, Plus, Play, Loader2, Search, X } from 'lucide-react'
 import {
   Table,
@@ -511,6 +512,7 @@ function AgentActions({ companyId, agent }: { companyId: string; agent: Agent })
 
 export function AgentsPage() {
   const companyId = useCompanyId()
+  const agentsInterval = usePollingInterval(POLLING_INTERVALS.agents)
   const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
   const [search, setSearch] = useState('')
@@ -528,7 +530,7 @@ export function AgentsPage() {
         offset: page * AGENTS_PAGE_SIZE,
       }),
     enabled: !!companyId,
-    refetchInterval: 10_000,
+    refetchInterval: agentsInterval,
   })
 
   const hasMore = (rawAgents?.length ?? 0) > AGENTS_PAGE_SIZE
