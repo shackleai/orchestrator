@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fetchDashboard, fetchAgents, type DashboardData, type Agent } from '@/lib/api'
 import { formatCents, formatRelativeTime } from '@/lib/utils'
-import { OnboardingWizard } from '@/components/onboarding'
+import { OnboardingWizard, isOnboardingDismissed } from '@/components/onboarding'
 
 function StatCard({
   label,
@@ -124,7 +124,7 @@ export function OverviewPage() {
     staleTime: 30_000,
   })
 
-  const isFirstTime = !agentsLoading && agents !== undefined && agents.length === 0
+  const isFirstTime = !agentsLoading && agents !== undefined && agents.length === 0 && !isOnboardingDismissed()
 
   if (isLoading || agentsLoading) return <OverviewSkeleton />
   if (error) return <OverviewError message={(error as Error).message} />

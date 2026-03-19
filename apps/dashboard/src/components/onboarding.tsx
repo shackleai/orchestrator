@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -12,6 +12,10 @@ import {
   EyeOff,
   Check,
   SkipForward,
+  Sparkles,
+  Rocket,
+  PartyPopper,
+  X,
 } from 'lucide-react'
 import {
   Card,
@@ -33,13 +37,35 @@ import {
   type CreateTaskPayload,
 } from '@/lib/api'
 
+const STORAGE_KEY = 'shackleai-onboarding-dismissed'
+
 const STEPS = [
+  { label: 'Welcome', icon: Sparkles },
   { label: 'API Key', icon: Key },
   { label: 'Agent', icon: Bot },
   { label: 'Task', icon: ListTodo },
 ] as const
 
 const ADAPTER_TYPES = ['crewai', 'process', 'http', 'claude', 'mcp', 'openclaw'] as const
+
+/**
+ * Check whether the onboarding wizard has been dismissed via localStorage.
+ */
+export function isOnboardingDismissed(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function dismissOnboarding(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, 'true')
+  } catch {
+    // localStorage may be unavailable in some environments
+  }
+}
 
 function StepIndicator({
   current,
@@ -91,12 +117,115 @@ function StepIndicator({
   )
 }
 
+function ProgressDots({ current, total }: { current: number; total: number }) {
+  return (
+    <div className="flex items-center justify-center gap-1.5" aria-hidden="true">
+      {Array.from({ length: total }).map((_, i) => (
+        <div
+          key={i}
+          className={'h-1.5 rounded-full transition-all duration-300 ' + (
+            i === current
+              ? 'w-6 bg-primary'
+              : i < current
+                ? 'w-1.5 bg-primary/40'
+                : 'w-1.5 bg-muted'
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
+function StepWelcome({
+  onNext,
+  onDismiss,
+  dontShowAgain,
+  setDontShowAgain,
+}: {
+  onNext: () => void
+  onDismiss: () => void
+  dontShowAgain: boolean
+  setDontShowAgain: (v: boolean) => void
+}) {
+  return (
+    <div className="space-y-6 text-center">
+      <div className="flex justify-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+          <Rocket className="h-8 w-8 text-primary" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <CardTitle className="text-xl">Welcome to ShackleAI</CardTitle>
+        <CardDescription className="text-balance">
+          Get your orchestrator up and running. This wizard will walk you
+          through setting up an API key, creating your first agent, and
+          assigning it a task.
+        </CardDescription>
+      </div>
+
+      <div className="space-y-4">
+        <div className="grid gap-3 text-left text-sm">
+          <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+            <Key className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="font-medium">Configure API key</p>
+              <p className="text-muted-foreground">Connect your LLM provider</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+            <Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="font-medium">Hire an agent</p>
+              <p className="text-muted-foreground">Create your first AI worker</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+            <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="font-medium">Assign a task</p>
+              <p className="text-muted-foreground">Give your agent its first job</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-border accent-primary"
+            />
+            Don&apos;t show again
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <SkipForward className="h-3.5 w-3.5" />
+              Skip
+            </button>
+            <Button onClick={onNext}>
+              Get Started
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StepApiKey({
   companyId,
   onNext,
+  onBack,
 }: {
   companyId: string
   onNext: () => void
+  onBack: () => void
 }) {
   const { toast } = useToast()
   const [openaiKey, setOpenaiKey] = useState('')
@@ -165,14 +294,20 @@ function StepApiKey({
       )}
 
       <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onNext}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <SkipForward className="h-3.5 w-3.5" />
-          Skip for now
-        </button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" onClick={onBack}>
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <button
+            type="button"
+            onClick={onNext}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <SkipForward className="h-3.5 w-3.5" />
+            Skip
+          </button>
+        </div>
         <Button type="submit" disabled={mutation.isPending || !openaiKey.trim()}>
           {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
           {mutation.isPending ? 'Saving...' : 'Save & Continue'}
@@ -397,67 +532,183 @@ function StepCreateTask({
   )
 }
 
+function StepSuccess({ onGoToDashboard }: { onGoToDashboard: () => void }) {
+  const [showConfetti, setShowConfetti] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowConfetti(false), 3000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  return (
+    <div className="space-y-6 text-center">
+      <div className="relative flex justify-center">
+        <div
+          className={'flex h-16 w-16 items-center justify-center rounded-2xl transition-all duration-500 ' + (
+            showConfetti
+              ? 'scale-110 bg-green-500/20'
+              : 'scale-100 bg-green-500/10'
+          )}
+        >
+          <PartyPopper
+            className={'h-8 w-8 text-green-500 transition-transform duration-500 ' + (
+              showConfetti ? 'rotate-12 scale-110' : 'rotate-0 scale-100'
+            )}
+          />
+        </div>
+        {showConfetti && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+            {[
+              { x: -24, y: -16, color: 'bg-yellow-400' },
+              { x: 28, y: -20, color: 'bg-blue-400' },
+              { x: -32, y: 4, color: 'bg-pink-400' },
+              { x: 36, y: -2, color: 'bg-green-400' },
+              { x: -18, y: -28, color: 'bg-purple-400' },
+              { x: 22, y: -32, color: 'bg-orange-400' },
+              { x: -36, y: -22, color: 'bg-red-400' },
+              { x: 32, y: -28, color: 'bg-teal-400' },
+            ].map((dot, i) => (
+              <div
+                key={i}
+                className={'absolute h-1.5 w-1.5 rounded-full ' + dot.color + ' animate-ping'}
+                style={{
+                  transform: 'translate(' + dot.x + 'px, ' + dot.y + 'px)',
+                  animationDelay: (i * 100) + 'ms',
+                  animationDuration: '1.5s',
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <CardTitle className="text-xl">You&apos;re all set!</CardTitle>
+        <CardDescription className="text-balance">
+          Your orchestrator is configured and your first agent is ready to work.
+          Head to the dashboard to monitor activity and manage your team.
+        </CardDescription>
+      </div>
+
+      <Button onClick={onGoToDashboard} size="lg" className="w-full sm:w-auto">
+        Go to Dashboard
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
 export function OnboardingWizard({ companyId }: { companyId: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [step, setStep] = useState(0)
   const [createdAgent, setCreatedAgent] = useState<Agent | null>(null)
+  const [completed, setCompleted] = useState(false)
+  const [dontShowAgain, setDontShowAgain] = useState(false)
+
+  const handleDismiss = useCallback(() => {
+    if (dontShowAgain) {
+      dismissOnboarding()
+    }
+    queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
+    navigate('/agents')
+  }, [dontShowAgain, companyId, queryClient, navigate])
+
+  const handleWelcomeNext = useCallback(() => {
+    setStep(1)
+  }, [])
 
   const handleApiKeyNext = useCallback(() => {
-    setStep(1)
+    setStep(2)
   }, [])
 
   const handleAgentCreated = useCallback((agent: Agent) => {
     setCreatedAgent(agent)
-    setStep(2)
+    setStep(3)
   }, [])
 
   const handleFinish = useCallback(() => {
+    dismissOnboarding()
+    setCompleted(true)
+  }, [])
+
+  const handleGoToDashboard = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['dashboard', companyId] })
     queryClient.invalidateQueries({ queryKey: ['agents', companyId] })
-    navigate(createdAgent ? `/agents/${createdAgent.id}` : '/agents')
+    navigate(createdAgent ? '/agents/' + createdAgent.id : '/')
   }, [companyId, queryClient, navigate, createdAgent])
+
+  const totalSteps = 4
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
       <div className="w-full max-w-lg space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">
-            Welcome to ShackleAI
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Let's get your orchestrator up and running in a few steps.
-          </p>
-        </div>
+        {!completed && (
+          <>
+            <div className="flex items-center justify-between">
+              <div className="flex-1" />
+              <h1 className="text-2xl font-bold tracking-tight text-center flex-shrink-0">
+                {step === 0 ? 'Get Started' : 'Setup Wizard'}
+              </h1>
+              <div className="flex flex-1 justify-end">
+                <button
+                  type="button"
+                  onClick={handleDismiss}
+                  className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Close onboarding wizard"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
 
-        <StepIndicator current={step} total={3} />
+            {step > 0 && <StepIndicator current={step} total={totalSteps} />}
+          </>
+        )}
 
         <Card>
           <CardContent className="p-6">
-            {step === 0 && (
-              <StepApiKey companyId={companyId} onNext={handleApiKeyNext} />
-            )}
-            {step === 1 && (
+            {completed ? (
+              <StepSuccess onGoToDashboard={handleGoToDashboard} />
+            ) : step === 0 ? (
+              <StepWelcome
+                onNext={handleWelcomeNext}
+                onDismiss={handleDismiss}
+                dontShowAgain={dontShowAgain}
+                setDontShowAgain={setDontShowAgain}
+              />
+            ) : step === 1 ? (
+              <StepApiKey
+                companyId={companyId}
+                onNext={handleApiKeyNext}
+                onBack={() => setStep(0)}
+              />
+            ) : step === 2 ? (
               <StepCreateAgent
                 companyId={companyId}
                 onNext={handleAgentCreated}
-                onBack={() => setStep(0)}
+                onBack={() => setStep(1)}
               />
-            )}
-            {step === 2 && (
+            ) : (
               <StepCreateTask
                 companyId={companyId}
                 agent={createdAgent}
                 onFinish={handleFinish}
-                onBack={() => setStep(1)}
+                onBack={() => setStep(2)}
               />
             )}
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Step {step + 1} of 3
-        </p>
+        {!completed && (
+          <ProgressDots current={step} total={totalSteps} />
+        )}
+
+        {!completed && (
+          <p className="text-center text-xs text-muted-foreground">
+            Step {step + 1} of {totalSteps}
+          </p>
+        )}
       </div>
     </div>
   )
