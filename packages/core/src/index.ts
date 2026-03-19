@@ -86,3 +86,15 @@ export type {
   UploadResult,
   DownloadResult,
 } from './storage/index.js'
+
+export { PluginManager, PluginLoader, PluginValidationError, HookRegistry, validatePlugin } from './plugins/index.js'
+export type {
+  ShacklePlugin,
+  PluginContext,
+  PluginStatus,
+  PluginRecord,
+  PluginInfo,
+  HookEvent,
+  HookPayload,
+  HookHandler,
+} from './plugins/index.js'
