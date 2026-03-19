@@ -46,6 +46,10 @@ export class DelegationService {
    * - Creates child issues with parent_id set to the original issue
    * - Assigns to toAgent with status 'todo'
    * - Returns created issue IDs
+   *
+   * All mutations are wrapped in a transaction. If any step fails
+   * (counter increment, issue insert), all changes are rolled back
+   * to prevent orphaned child issues or phantom counter increments.
    */
   async delegate(
     companyId: string,
@@ -54,6 +58,7 @@ export class DelegationService {
     toAgentId: string,
     subTasks: Array<{ title: string; description?: string | null }>,
   ): Promise<string[]> {
+    // Hierarchy check runs outside the transaction (read-only, no rollback needed)
     const allowed = await this.canDelegate(fromAgentId, toAgentId)
     if (!allowed) {
       throw new DelegationError(
@@ -61,55 +66,58 @@ export class DelegationService {
       )
     }
 
-    // Verify the parent issue exists and belongs to the company
-    const parentResult = await this.db.query<Pick<Issue, 'id'>>(
-      `SELECT id FROM issues WHERE id = $1 AND company_id = $2`,
-      [issueId, companyId],
-    )
-    if (parentResult.rows.length === 0) {
-      throw new DelegationError('Parent issue not found')
-    }
-
-    const childIds: string[] = []
-
-    for (const task of subTasks) {
-      // Atomically increment company issue_counter
-      const counterResult = await this.db.query<CompanyCounter>(
-        `UPDATE companies SET issue_counter = issue_counter + 1 WHERE id = $1
-         RETURNING issue_prefix, issue_counter`,
-        [companyId],
+    // Wrap all mutations in a transaction to prevent partial state on failure
+    return this.db.transaction(async (tx) => {
+      // Verify the parent issue exists and belongs to the company
+      const parentResult = await tx.query<Pick<Issue, 'id'>>(
+        `SELECT id FROM issues WHERE id = $1 AND company_id = $2`,
+        [issueId, companyId],
       )
-
-      if (counterResult.rows.length === 0) {
-        throw new DelegationError('Company not found')
+      if (parentResult.rows.length === 0) {
+        throw new DelegationError('Parent issue not found')
       }
 
-      const { issue_prefix, issue_counter } = counterResult.rows[0]
-      const identifier = `${issue_prefix}-${issue_counter}`
+      const childIds: string[] = []
 
-      const insertResult = await this.db.query<Pick<Issue, 'id'>>(
-        `INSERT INTO issues
-           (company_id, identifier, issue_number, title, description, parent_id,
-            status, priority, assignee_agent_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id`,
-        [
-          companyId,
-          identifier,
-          issue_counter,
-          task.title,
-          task.description ?? null,
-          issueId,
-          IssueStatus.Todo,
-          'medium',
-          toAgentId,
-        ],
-      )
+      for (const task of subTasks) {
+        // Atomically increment company issue_counter
+        const counterResult = await tx.query<CompanyCounter>(
+          `UPDATE companies SET issue_counter = issue_counter + 1 WHERE id = $1
+           RETURNING issue_prefix, issue_counter`,
+          [companyId],
+        )
 
-      childIds.push(insertResult.rows[0].id)
-    }
+        if (counterResult.rows.length === 0) {
+          throw new DelegationError('Company not found')
+        }
 
-    return childIds
+        const { issue_prefix, issue_counter } = counterResult.rows[0]
+        const identifier = `${issue_prefix}-${issue_counter}`
+
+        const insertResult = await tx.query<Pick<Issue, 'id'>>(
+          `INSERT INTO issues
+             (company_id, identifier, issue_number, title, description, parent_id,
+              status, priority, assignee_agent_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id`,
+          [
+            companyId,
+            identifier,
+            issue_counter,
+            task.title,
+            task.description ?? null,
+            issueId,
+            IssueStatus.Todo,
+            'medium',
+            toAgentId,
+          ],
+        )
+
+        childIds.push(insertResult.rows[0].id)
+      }
+
+      return childIds
+    })
   }
 }
 
