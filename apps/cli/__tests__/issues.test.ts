@@ -80,7 +80,7 @@ describe('issues routes — CRUD', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'CRUD')
     companyId = company.id
   })
@@ -207,7 +207,7 @@ describe('issues routes — auto-generated identifier', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'ACME')
     companyId = company.id
   })
@@ -246,7 +246,7 @@ describe('issues routes — atomic checkout', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'CHKOUT')
     companyId = company.id
     // Create real agents to satisfy FK constraint
@@ -356,7 +356,7 @@ describe('issues routes — release', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'REL')
     companyId = company.id
     const agent1 = await createAgent(db, companyId, 'Release Agent 1')
@@ -433,7 +433,7 @@ describe('issues routes — comments', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'CMT')
     companyId = company.id
     const issue = await createIssue(app, companyId, { title: 'Issue For Comments' })
@@ -558,7 +558,7 @@ describe('issues routes — filtering', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'FILT')
     companyId = company.id
     const filtAgent = await createAgent(db, companyId, 'Filter Test Agent')

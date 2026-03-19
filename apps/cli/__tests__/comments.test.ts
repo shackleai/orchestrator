@@ -87,7 +87,7 @@ describe('comments routes — CRUD', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'CMTS')
     companyId = company.id
     const issue = await createIssue(app, companyId, { title: 'Comment Target' })
@@ -220,7 +220,7 @@ describe('comments routes — threading', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'THRD')
     companyId = company.id
     const issue = await createIssue(app, companyId, { title: 'Thread Target' })
@@ -266,7 +266,7 @@ describe('comments routes — @mention triggers', () => {
       triggerNow: vi.fn().mockResolvedValue(undefined),
     } as unknown as Scheduler
 
-    app = createApp(db, { scheduler: mockScheduler })
+    app = createApp(db, { skipAuth: true, scheduler: mockScheduler })
     const company = await createCompany(app, 'MENT')
     companyId = company.id
 
@@ -296,7 +296,7 @@ describe('comments routes — @mention triggers', () => {
   it('does not fire trigger for non-existent agent mention', async () => {
     const triggerNow = vi.fn().mockResolvedValue(undefined)
     const scheduler = { triggerNow } as unknown as Scheduler
-    const localApp = createApp(db, { scheduler })
+    const localApp = createApp(db, { skipAuth: true, scheduler })
 
     const res = await localApp.request(
       `/api/companies/${companyId}/issues/${issueId}/comments`,

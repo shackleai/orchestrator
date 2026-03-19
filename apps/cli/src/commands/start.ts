@@ -3,6 +3,7 @@
  */
 
 import net from 'node:net'
+import { createHash, randomBytes } from 'node:crypto'
 import { serve } from '@hono/node-server'
 import { PGliteProvider, PgProvider, runMigrations } from '@shackleai/db'
 import type { DatabaseProvider } from '@shackleai/db'
@@ -19,6 +20,7 @@ import {
   OpenClawAdapter,
   CrewAIAdapter,
 } from '@shackleai/core'
+import { AgentApiKeyStatus } from '@shackleai/shared'
 import { readConfig, writeConfig } from '../config.js'
 import type { ShackleAIConfig } from '../config.js'
 import { createApp } from '../server/index.js'
@@ -63,6 +65,9 @@ export async function startCommand(options: { port: number }): Promise<void> {
   }
 
   await runMigrations(db)
+
+  // Ensure at least one API key exists — generate a default admin key on first start
+  await ensureDefaultApiKey(db, config.companyId)
 
   // Initialize core services
   const costTracker = new CostTracker(db)
@@ -210,6 +215,63 @@ async function autoInitFromEnv(companyName: string): Promise<ShackleAIConfig> {
   await writeConfig(config)
   console.log(`  Initialized company "${companyName.trim()}" (${companyId})`)
   return config
+}
+
+
+/**
+ * Ensure at least one API key exists for the company.
+ * On first start, creates a default admin agent and generates an API key.
+ */
+async function ensureDefaultApiKey(db: DatabaseProvider, companyId: string): Promise<void> {
+  const existing = await db.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM agent_api_keys WHERE company_id = $1 AND status = $2`,
+    [companyId, AgentApiKeyStatus.Active],
+  )
+
+  const count = parseInt(existing.rows[0]?.count ?? '0', 10)
+  if (count > 0) {
+    return
+  }
+
+  let adminAgentId: string
+  const adminAgent = await db.query<{ id: string }>(
+    `SELECT id FROM agents WHERE company_id = $1 AND name = $2 LIMIT 1`,
+    [companyId, '__admin__'],
+  )
+
+  if (adminAgent.rows.length > 0) {
+    adminAgentId = adminAgent.rows[0].id
+  } else {
+    const created = await db.query<{ id: string }>(
+      `INSERT INTO agents (company_id, name, title, role, status, adapter_type, adapter_config)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [companyId, '__admin__', 'Admin Service Account', 'admin', 'active', 'process', JSON.stringify({})],
+    )
+    adminAgentId = created.rows[0].id
+  }
+
+  const plainKey = randomBytes(32).toString('hex')
+  const keyHash = createHash('sha256').update(plainKey).digest('hex')
+
+  await db.query(
+    `INSERT INTO agent_api_keys (agent_id, company_id, key_hash, label, status)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [adminAgentId, companyId, keyHash, 'default-admin', AgentApiKeyStatus.Active],
+  )
+
+  console.log(`
+  =====================================================================
+  DEFAULT API KEY GENERATED
+
+  All API routes now require authentication.
+  Use this key in the Authorization header:
+
+    Authorization: Bearer ${plainKey}
+
+  Save this key — it will NOT be shown again.
+  =====================================================================
+  `)
 }
 
 /** Check if a port is available by trying to listen on it */

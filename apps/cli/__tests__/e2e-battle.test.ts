@@ -264,7 +264,7 @@ describe('Battle 1: full lifecycle', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
   })
 
   afterAll(async () => {
@@ -437,7 +437,7 @@ describe('Battle 2: governance — policy enforcement', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Governance Labs')
     companyId = company.id
@@ -607,7 +607,7 @@ describe('Battle 3: agent communication via comments and activity', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Comm Corp')
     companyId = company.id
@@ -778,7 +778,7 @@ describe('Battle 4: worktree management (DB-level)', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Worktree Works')
     companyId = company.id
@@ -932,7 +932,7 @@ describe('Battle 5: cost tracking', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Cost Corp', { budget_monthly_cents: 10000 })
     companyId = company.id
@@ -1102,7 +1102,7 @@ describe('Battle 6: pagination', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Pagination Plc')
     companyId = company.id
@@ -1230,7 +1230,7 @@ describe('Battle 7: error handling', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Error Corp')
     companyId = company.id
@@ -1420,7 +1420,7 @@ describe('Battle 8: dashboard API', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Dashboard Inc')
     companyId = company.id
@@ -1601,7 +1601,7 @@ describe('Battle 10: agent lifecycle', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Lifecycle Agents')
     companyId = company.id
@@ -1706,7 +1706,7 @@ describe('Battle 11: API key generation', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     const company = await createCompany(app, 'Key Corp')
     companyId = company.id
@@ -1813,7 +1813,7 @@ describe('Battle 12: multi-tenant isolation', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     // Use explicit distinct prefixes — both "Tenant Alpha" and "Tenant Beta"
     // produce the same auto-generated prefix "TENA" (first 4 chars of "TENANTALPHA/BETA")

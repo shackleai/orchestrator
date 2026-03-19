@@ -77,7 +77,7 @@ describe('tool-calls routes', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     companyId = await createCompany(app, 'ToolCall Corp')
     agentId = await createAgent(app, companyId)
     runId = await insertHeartbeatRun(db, companyId, agentId)
