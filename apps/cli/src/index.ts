@@ -21,6 +21,7 @@ import { registerConfigCommand } from './commands/config-cmd.js'
 import { registerApprovalCommand } from './commands/approval.js'
 import { registerSecretCommand } from './commands/secret.js'
 import { registerQuotaCommand } from './commands/quota.js'
+import { registerDbCommand } from './commands/db.js'
 import { handleError, setVerbose } from './errors.js'
 
 export const VERSION = '0.1.0'
@@ -68,6 +69,7 @@ registerConfigCommand(program)
 registerApprovalCommand(program)
 registerSecretCommand(program)
 registerQuotaCommand(program)
+registerDbCommand(program)
 
 // Only parse when run as CLI entrypoint — not when imported for VERSION etc.
 const isDirectRun =
