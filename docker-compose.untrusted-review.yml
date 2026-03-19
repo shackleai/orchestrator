@@ -1,0 +1,106 @@
+# Sandboxed Docker Compose for untrusted PR review.
+#
+# Security properties:
+#   - Ephemeral tmpfs database — destroyed after review completes.
+#   - No host volume mounts — source code is COPYed at build time only.
+#   - Network isolation — no outbound except the GitHub API egress proxy.
+#   - Read-only root filesystem with small tmpfs scratchpads for build artefacts.
+#   - Hard resource limits: 1 CPU, 1 GB RAM.
+#   - Non-root user (node, UID 1000) inherited from the base image.
+#
+# Usage: invoked automatically by scripts/review-pr.sh — do not run directly.
+
+version: "3.9"
+
+networks:
+  # Isolated bridge — containers have no outbound route except through the
+  # explicit gh-proxy sidecar. Docker's `internal: true` blocks the default
+  # gateway, preventing any direct internet access.
+  review-net:
+    driver: bridge
+    internal: true
+
+  # Thin egress network that only the gh-proxy sidecar touches.
+  # The review container itself is NOT attached to this network.
+  egress-net:
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------------------
+  # gh-proxy — socat forwarder that proxies only api.github.com:443.
+  # The review container routes its GitHub API calls through this sidecar;
+  # every other destination is unreachable from inside the sandbox.
+  # ---------------------------------------------------------------------------
+  gh-proxy:
+    image: alpine/socat:latest
+    command: >
+      TCP-LISTEN:8080,fork,reuseaddr
+      TCP:api.github.com:443
+    networks:
+      - review-net
+      - egress-net
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # review — the sandboxed build/lint/test runner.
+  # ---------------------------------------------------------------------------
+  review:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PR_REF: "${PR_REF:-}"
+        GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+    # Overridden by review-pr.sh to run scripts/run-review.sh
+    entrypoint: ["/app/scripts/run-review.sh"]
+
+    environment:
+      NODE_ENV: test
+      # Route GitHub API calls through the proxy sidecar only.
+      HTTPS_PROXY: "http://gh-proxy:8080"
+      PR_NUMBER: "${PR_NUMBER:-}"
+      PR_REF: "${PR_REF:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GITHUB_REPOSITORY: "${GITHUB_REPOSITORY:-shackleai/orchestrator}"
+
+    networks:
+      - review-net   # can reach gh-proxy only; no direct internet
+
+    # Read-only root fs. The tmpfs entries below give the build process the
+    # writable scratch space it needs without touching the host filesystem.
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /app/node_modules:size=512m
+      - /app/dist:size=128m
+      - /app/packages/shared/dist:size=64m
+      - /app/packages/db/dist:size=64m
+      - /app/packages/core/dist:size=64m
+      - /app/apps/cli/dist:size=64m
+      - /app/apps/dashboard/dist:size=64m
+      # PGlite (embedded DB used in tests) writes here
+      - /root/.shackleai:size=128m,mode=0700
+
+    security_opt:
+      - no-new-privileges:true
+
+    # Hard resource caps — a runaway test suite cannot starve the host.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+    # No persistent volumes — all storage lives in tmpfs and is destroyed
+    # when the container exits.
+    depends_on:
+      - gh-proxy
+
+    restart: "no"
