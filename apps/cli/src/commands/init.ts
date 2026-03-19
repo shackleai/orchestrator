@@ -79,21 +79,32 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   }
 
   let databaseUrl: string | undefined
+  let databaseUrlFromEnv = false
   if (mode === 'server') {
-    const urlInput = await p.text({
-      message: 'DATABASE_URL',
-      placeholder: 'postgresql://user:pass@host:5432/dbname',
-      validate: (v) => {
-        if (!v.trim()) return 'Database URL is required for server mode'
-        return undefined
-      },
-    })
+    const envUrl = process.env.SHACKLEAI_DATABASE_URL
+    if (envUrl) {
+      p.log.info(`Using DATABASE_URL from SHACKLEAI_DATABASE_URL env var.`)
+      databaseUrl = envUrl
+      databaseUrlFromEnv = true
+    } else {
+      p.log.info(
+        'Tip: Set SHACKLEAI_DATABASE_URL env var to avoid storing credentials in config.',
+      )
+      const urlInput = await p.text({
+        message: 'DATABASE_URL',
+        placeholder: 'postgresql://user:pass@host:5432/dbname',
+        validate: (v) => {
+          if (!v.trim()) return 'Database URL is required for server mode'
+          return undefined
+        },
+      })
 
-    if (p.isCancel(urlInput)) {
-      p.cancel('Setup cancelled.')
-      process.exit(0)
+      if (p.isCancel(urlInput)) {
+        p.cancel('Setup cancelled.')
+        process.exit(0)
+      }
+      databaseUrl = urlInput
     }
-    databaseUrl = urlInput
   }
 
   // Initialize DB
@@ -144,12 +155,12 @@ export async function initCommand(options: InitOptions = {}): Promise<void> {
   }
   spin.stop('Company created')
 
-  // Save config
+  // Save config — never persist databaseUrl if it came from env var
   await writeConfig({
     mode: mode as 'local' | 'server',
     companyId,
     companyName: companyName.trim(),
-    ...(databaseUrl ? { databaseUrl } : {}),
+    ...(databaseUrl && !databaseUrlFromEnv ? { databaseUrl } : {}),
     ...(mode === 'local' ? { dataDir: 'default' } : {}),
   })
 

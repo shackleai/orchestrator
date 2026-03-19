@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander'
 import * as p from '@clack/prompts'
-import { listConfigHistory, rollbackConfig, exportConfig } from '../config.js'
+import { listConfigHistory, rollbackConfig, exportConfig, stripSensitiveFromConfig, getConfigPath } from '../config.js'
 
 async function configHistory(): Promise<void> {
   const history = await listConfigHistory()
@@ -36,6 +36,25 @@ async function configExport(): Promise<void> {
   console.log(exported)
 }
 
+async function configRedact(): Promise<void> {
+  const stripped = await stripSensitiveFromConfig()
+  if (stripped.length === 0) {
+    p.log.info('No sensitive values found in config (or no config exists).')
+    p.log.info(
+      'Tip: Set SHACKLEAI_DATABASE_URL env var so credentials never touch disk.',
+    )
+    return
+  }
+  p.log.success(`Stripped ${stripped.length} sensitive field(s) from config:`)
+  for (const field of stripped) {
+    console.log(`  - ${field}`)
+  }
+  p.log.info(`Config file: ${getConfigPath()}`)
+  p.log.info(
+    'Set SHACKLEAI_DATABASE_URL env var before running `shackleai start`.',
+  )
+}
+
 export function registerConfigCommand(program: Command): void {
   const configCmd = program
     .command('config')
@@ -55,4 +74,9 @@ export function registerConfigCommand(program: Command): void {
     .command('export')
     .description('Print config with secrets redacted')
     .action(configExport)
+
+  configCmd
+    .command('redact')
+    .description('Strip sensitive values (databaseUrl, llmKeys) from config file')
+    .action(configRedact)
 }

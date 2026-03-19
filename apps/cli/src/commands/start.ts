@@ -23,7 +23,7 @@ import {
   QuotaManager,
 } from '@shackleai/core'
 import { AgentApiKeyStatus } from '@shackleai/shared'
-import { readConfig, writeConfig } from '../config.js'
+import { readConfig, writeConfig, resolveDatabaseUrl } from '../config.js'
 import type { ShackleAIConfig } from '../config.js'
 import { createApp } from '../server/index.js'
 import { VERSION } from '../index.js'
@@ -62,13 +62,18 @@ export async function startCommand(options: { port: number }): Promise<void> {
     if (config.mode === 'local') {
       db = new PGliteProvider(config.dataDir ?? 'default')
     } else {
-      if (!config.databaseUrl) {
+      const { url: dbUrl, source } = resolveDatabaseUrl(config)
+      if (!dbUrl) {
         console.error(
-          'Server mode requires a DATABASE_URL. Run `shackleai init` again.',
+          'Server mode requires a database URL.\n' +
+          'Set SHACKLEAI_DATABASE_URL env var or run `shackleai init` again.',
         )
         process.exit(1)
       }
-      db = new PgProvider(config.databaseUrl)
+      if (source === 'env') {
+        console.log('  Using DATABASE_URL from SHACKLEAI_DATABASE_URL env var.')
+      }
+      db = new PgProvider(dbUrl)
     }
   }
 
@@ -219,11 +224,11 @@ async function autoInitFromEnv(
     }
   }
 
+  // Never persist databaseUrl from env vars — it stays in the environment
   const config: ShackleAIConfig = {
     mode,
     companyId,
     companyName: companyName.trim(),
-    ...(databaseUrl ? { databaseUrl } : {}),
     ...(mode === 'local' ? { dataDir: 'default' } : {}),
   }
 
