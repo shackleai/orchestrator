@@ -54,6 +54,7 @@
     "@shackleai/db": "workspace:*",
     "@shackleai/shared": "workspace:*",
     "commander": "^13.1.0",
-    "hono": "^4.7.10"
+    "hono": "^4.7.10",
+    "picocolors": "^1.1.1"
   }
 }
