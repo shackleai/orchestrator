@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Bot,
@@ -11,6 +11,7 @@ import {
   Settings,
   Menu,
   X,
+  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,8 @@ import { LicenseStatus } from '@/components/LicenseStatus'
 import { CompanySelector } from '@/components/CompanySelector'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LiveIndicator } from '@/components/LiveIndicator'
+import { CommandPalette } from '@/components/CommandPalette'
+import { useRecentPages } from '@/hooks/useRecentPages'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
@@ -31,11 +34,44 @@ const navItems = [
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
+/** Map pathname to a human-readable label for recent pages tracking. */
+function getPageLabel(pathname: string): string {
+  const match = navItems.find((item) => item.to === pathname)
+  if (match) return match.label
+  if (pathname.startsWith('/agents/')) return 'Agent Detail'
+  if (pathname.startsWith('/tasks/')) return 'Task Detail'
+  return 'Page'
+}
+
 export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const location = useLocation()
+  const { addRecentPage } = useRecentPages()
+
+  // Track page visits for recent pages
+  useEffect(() => {
+    addRecentPage(location.pathname, getPageLabel(location.pathname))
+  }, [location.pathname, addRecentPage])
+
+  // Global Cmd+K / Ctrl+K shortcut
+  const handleGlobalKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      setPaletteOpen((prev) => !prev)
+    }
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleGlobalKeyDown)
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [handleGlobalKeyDown])
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* Command Palette */}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -126,7 +162,21 @@ export function DashboardLayout() {
           <h1 className="text-sm font-medium text-muted-foreground">
             Dashboard
           </h1>
-          <div className="ml-auto">
+
+          {/* Search trigger */}
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="ml-auto mr-2 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Open command palette"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Search...</span>
+            <kbd className="hidden rounded border border-border bg-background px-1 py-0.5 text-[10px] font-medium sm:inline-block">
+              Ctrl+K
+            </kbd>
+          </button>
+
+          <div>
             <LiveIndicator />
           </div>
         </header>
