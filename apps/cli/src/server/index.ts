@@ -38,6 +38,7 @@ import { workspaceOperationsRouter } from './routes/workspace-operations.js'
 import { financeRouter } from './routes/finance.js'
 import { llmConfigsRouter } from './routes/llm-configs.js'
 import { pluginsRouter } from './routes/plugins.js'
+import { authRouter } from './routes/auth.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
@@ -79,11 +80,14 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
     return c.json({ status: 'ok', version: VERSION })
   })
 
-  // --- Global API authentication — protects all /api/* routes except /api/health ---
+  // --- Auth routes — unauthenticated (register, login) ---
+  app.route('/api/auth', authRouter(db))
+
+  // --- Global API authentication — protects all /api/* routes except /api/health and /api/auth ---
   if (!options?.skipAuth) {
     const apiAuthMiddleware = createApiAuth(db)
     app.use('/api/*', async (c, next) => {
-      if (c.req.path === '/api/health') {
+      if (c.req.path === '/api/health' || c.req.path.startsWith('/api/auth')) {
         return next()
       }
       return apiAuthMiddleware(c, next)

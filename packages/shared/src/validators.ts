@@ -22,6 +22,7 @@ import {
   WorkspaceOperationType,
   LlmProvider,
   WorkspacePolicyAction,
+  UserRole,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -641,3 +642,23 @@ export const SetWorkspacePolicyInput = z.object({
   rules: z.array(WorkspacePolicyRuleInput).min(1),
 })
 export type SetWorkspacePolicyInput = z.infer<typeof SetWorkspacePolicyInput>
+
+// ---------------------------------------------------------------------------
+// Auth — User Registration & Login
+// ---------------------------------------------------------------------------
+
+const userRoleValues = Object.values(UserRole) as [string, ...string[]]
+
+export const RegisterUserInput = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: nonEmpty,
+  role: z.enum(userRoleValues).optional().default(UserRole.Member),
+})
+export type RegisterUserInput = z.infer<typeof RegisterUserInput>
+
+export const LoginUserInput = z.object({
+  email: z.string().email(),
+  password: nonEmpty,
+})
+export type LoginUserInput = z.infer<typeof LoginUserInput>

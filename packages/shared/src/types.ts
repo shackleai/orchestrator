@@ -698,6 +698,45 @@ export interface TaskUpdatePayload {
   agentId?: string
 }
 
+// ---------------------------------------------------------------------------
+// Users & Sessions
+// ---------------------------------------------------------------------------
+
+export interface User {
+  id: string
+  email: string
+  password_hash: string
+  name: string
+  role: string
+  company_id: string | null
+  created_at: Date
+  updated_at: Date
+}
+
+/** Safe user object without password_hash — returned from API endpoints. */
+export interface UserPublic {
+  id: string
+  email: string
+  name: string
+  role: string
+  company_id: string | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface UserSession {
+  id: string
+  user_id: string
+  token_hash: string
+  expires_at: Date
+  created_at: Date
+}
+
+export interface AuthResponse {
+  user: UserPublic
+  token: string
+}
+
 /** Payload for cost_event events. */
 export interface CostEventPayload {
   agentId: string
