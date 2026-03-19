@@ -23,6 +23,7 @@ import * as m021 from './021_honesty_checklist.js'
 import * as m022 from './022_labels.js'
 import * as m023 from './023_issue_attachments.js'
 import * as m024 from './024_documents.js'
+import * as m025 from './025_wakeup_requests.js'
 
 export interface Migration {
   name: string
@@ -54,6 +55,7 @@ const migrations: Migration[] = [
   m022,
   m023,
   m024,
+  m025,
 ]
 
 /**

@@ -499,3 +499,21 @@ export interface CompanyImportResult {
   projects_created: number
   issues_created: number
 }
+
+
+// ---------------------------------------------------------------------------
+// Wakeup Requests
+// ---------------------------------------------------------------------------
+
+/** A queued wakeup request for an agent that was busy when triggered. */
+export interface WakeupRequest {
+  id: string
+  agent_id: string
+  company_id: string
+  trigger_type: string
+  reason: string | null
+  status: 'pending' | 'processed' | 'expired'
+  created_at: string
+  processed_at: string | null
+}
+
