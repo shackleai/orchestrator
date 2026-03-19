@@ -10,6 +10,7 @@ import { CostsPage } from './pages/costs'
 import { OrgChartPage } from './pages/org-chart'
 import { SettingsPage } from './pages/settings'
 import { TaskDetailPage } from './pages/task-detail'
+import { DesignGuidePage } from './pages/design-guide'
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
         <Route path="costs" element={<CostsPage />} />
         <Route path="org-chart" element={<OrgChartPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="design-guide" element={<DesignGuidePage />} />
       </Route>
     </Routes>
   )
