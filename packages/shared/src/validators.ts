@@ -21,6 +21,7 @@ import {
   FinanceEventType,
   WorkspaceOperationType,
   LlmProvider,
+  WorkspacePolicyAction,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -616,3 +617,27 @@ export const UpdateLlmConfigInput = z.object({
   temperature: z.number().min(0).max(2).nullable().optional(),
 })
 export type UpdateLlmConfigInput = z.infer<typeof UpdateLlmConfigInput>
+
+// ---------------------------------------------------------------------------
+// Workspace Policy Rules
+// ---------------------------------------------------------------------------
+
+const workspacePolicyActionValues = Object.values(WorkspacePolicyAction) as [
+  string,
+  ...string[],
+]
+
+export const WorkspacePolicyRuleInput = z.object({
+  operations: z.array(z.enum(workspaceOperationTypeValues)).default([]),
+  file_patterns: z.array(z.string()).default([]),
+  action: z.enum(workspacePolicyActionValues).default(WorkspacePolicyAction.Allow),
+  priority: z.number().int().min(0).default(0),
+})
+export type WorkspacePolicyRuleInput = z.infer<typeof WorkspacePolicyRuleInput>
+
+export const SetWorkspacePolicyInput = z.object({
+  workspace_id: uuid,
+  agent_id: uuid,
+  rules: z.array(WorkspacePolicyRuleInput).min(1),
+})
+export type SetWorkspacePolicyInput = z.infer<typeof SetWorkspacePolicyInput>

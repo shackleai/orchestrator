@@ -197,6 +197,13 @@ export const WorkspaceOperationType = {
 export type WorkspaceOperationType =
   (typeof WorkspaceOperationType)[keyof typeof WorkspaceOperationType]
 
+export const WorkspacePolicyAction = {
+  Allow: 'allow',
+  Deny: 'deny',
+} as const
+export type WorkspacePolicyAction =
+  (typeof WorkspacePolicyAction)[keyof typeof WorkspacePolicyAction]
+
 /** Free tier limit for concurrent active worktrees per company. */
 export const FREE_TIER_MAX_WORKTREES = 5
 

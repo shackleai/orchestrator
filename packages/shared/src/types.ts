@@ -611,6 +611,47 @@ export interface WorkspaceOperation {
   created_at: Date
 }
 
+
+// ---------------------------------------------------------------------------
+// Workspace Policies -- per-agent, per-workspace operation rules
+// ---------------------------------------------------------------------------
+
+/**
+ * A single workspace policy rule.
+ * Rules are evaluated in priority order (highest first).
+ * First match wins; if no rule matches, the default policy applies.
+ */
+export interface WorkspacePolicyRule {
+  /** Operation types this rule applies to. Empty = all operations. */
+  operations: string[]
+  /** Glob patterns for file paths this rule applies to. Empty = all files. */
+  filePatterns: string[]
+  /** Allow or deny the matched operations. */
+  action: string
+  /** Higher priority rules are evaluated first. */
+  priority: number
+}
+
+/**
+ * A complete workspace policy -- attached to a workspace for a specific agent.
+ * Default behavior: agents can only operate in their own worktrees.
+ */
+export interface WorkspacePolicy {
+  /** The workspace (worktree) ID this policy applies to. */
+  workspaceId: string
+  /** The agent this policy applies to. */
+  agentId: string
+  /** Ordered rules -- evaluated highest-priority first. */
+  rules: WorkspacePolicyRule[]
+}
+
+/** Result of a workspace policy check. */
+export interface WorkspacePolicyCheckResult {
+  allowed: boolean
+  /** The rule that matched, if any. */
+  matchedRule?: WorkspacePolicyRule
+  reason: string
+}
 // ---------------------------------------------------------------------------
 // WebSocket Events — real-time dashboard updates
 // ---------------------------------------------------------------------------
