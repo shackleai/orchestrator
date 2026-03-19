@@ -41,6 +41,7 @@ import type { GovernanceEngine } from '../governance/index.js'
 import { SecretsManager } from '../secrets/index.js'
 import { LogRedactor } from '../secrets/index.js'
 import { HeartbeatEventLogger } from './event-logger.js'
+import type { QuotaManager } from '../quota/index.js'
 
 /** Default timeout in seconds. */
 const DEFAULT_TIMEOUT_S = 300
@@ -88,6 +89,7 @@ export class HeartbeatExecutor {
   private governance: GovernanceEngine | null
   private secretsManager: SecretsManager
   private logRedactor: LogRedactor
+  private quotaManager: QuotaManager | null
 
   constructor(
     db: DatabaseProvider,
@@ -95,6 +97,7 @@ export class HeartbeatExecutor {
     observatory: Observatory,
     adapterRegistry: AdapterRegistry,
     governance?: GovernanceEngine,
+    quotaManager?: QuotaManager,
   ) {
     this.db = db
     this.costTracker = costTracker
@@ -104,6 +107,7 @@ export class HeartbeatExecutor {
     this.governance = governance ?? null
     this.secretsManager = new SecretsManager(db)
     this.logRedactor = new LogRedactor()
+    this.quotaManager = quotaManager ?? null
   }
 
   /**
@@ -179,6 +183,32 @@ export class HeartbeatExecutor {
         events.emit('error', { message: errMsg })
 
         return { exitCode: 1, stderr: errMsg }
+      }
+
+      // -- Step 3b: Quota check -----------------------------------------------
+      if (this.quotaManager) {
+        const quotaResult = await this.quotaManager.checkQuota(companyId, agentId)
+        if (!quotaResult.allowed) {
+          const errMsg = `Quota exceeded: ${quotaResult.reason}`
+          await this.markRunFailed(runId, errMsg)
+          await this.markAgentIdle(agentId)
+
+          this.observatory.logEvent({
+            company_id: companyId,
+            entity_type: 'heartbeat_run',
+            entity_id: runId,
+            actor_type: 'agent',
+            actor_id: agentId,
+            action: 'quota_exceeded',
+            changes: {
+              trigger,
+              quotaId: quotaResult.quotaId ?? null,
+              reason: quotaResult.reason,
+            },
+          })
+
+          return { exitCode: 1, stderr: errMsg }
+        }
       }
 
       // ── Step 4: Load adapter ────────────────────────────────────────

@@ -24,6 +24,7 @@ import { toolCallsRouter } from './routes/tool-calls.js'
 import { commentsRouter } from './routes/comments.js'
 import { approvalsRouter } from './routes/approvals.js'
 import { secretsRouter } from './routes/secrets.js'
+import { quotasRouter } from './routes/quotas.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
@@ -68,6 +69,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', commentsRouter(db, options?.scheduler))
   app.route('/api/companies', approvalsRouter(db))
   app.route('/api/companies', secretsRouter(db))
+  app.route('/api/companies', quotasRouter(db))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)
