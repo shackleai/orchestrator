@@ -11,7 +11,11 @@ interface ApiResponse<T> {
   error?: string
 }
 
-function formatWorktreeTable(worktrees: AgentWorktree[]): void {
+interface WorktreeWithAgent extends AgentWorktree {
+  agent_name?: string
+}
+
+function formatWorktreeTable(worktrees: WorktreeWithAgent[]): void {
   if (worktrees.length === 0) {
     console.log('No worktrees found.')
     return
@@ -19,7 +23,7 @@ function formatWorktreeTable(worktrees: AgentWorktree[]): void {
 
   const rows = worktrees.map((w) => ({
     ID: w.id.slice(0, 8),
-    Agent: w.agent_id.slice(0, 8),
+    Agent: w.agent_name ?? w.agent_id.slice(0, 8),
     Branch: w.branch,
     Base: w.base_branch,
     Status: w.status,
@@ -51,30 +55,16 @@ async function listWorktrees(options: { agent?: string }): Promise<void> {
     return
   }
 
-  // List all worktrees across all agents — fetch agents first, then their worktrees
-  const agentsRes = await apiClient(`/api/companies/${companyId}/agents`)
-  if (!agentsRes.ok) {
-    const body = (await agentsRes.json()) as ApiResponse<never>
-    console.error(`Error: ${body.error ?? agentsRes.statusText}`)
+  // List all worktrees across all agents — single company-level query
+  const res = await apiClient(`/api/companies/${companyId}/worktrees`)
+  if (!res.ok) {
+    const body = (await res.json()) as ApiResponse<never>
+    console.error(`Error: ${body.error ?? res.statusText}`)
     process.exit(1)
   }
 
-  const agentsBody = (await agentsRes.json()) as ApiResponse<
-    { id: string }[]
-  >
-  const allWorktrees: AgentWorktree[] = []
-
-  for (const agent of agentsBody.data) {
-    const res = await apiClient(
-      `/api/companies/${companyId}/agents/${agent.id}/worktrees`,
-    )
-    if (res.ok) {
-      const body = (await res.json()) as ApiResponse<AgentWorktree[]>
-      allWorktrees.push(...body.data)
-    }
-  }
-
-  formatWorktreeTable(allWorktrees)
+  const body = (await res.json()) as ApiResponse<WorktreeWithAgent[]>
+  formatWorktreeTable(body.data)
 }
 
 async function createWorktree(
