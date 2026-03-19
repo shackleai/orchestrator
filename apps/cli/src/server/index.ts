@@ -6,6 +6,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { serveStatic } from '@hono/node-server/serve-static'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { Scheduler } from '@shackleai/core'
@@ -31,19 +32,40 @@ import { VERSION } from '../index.js'
 
 export interface CreateAppOptions {
   scheduler?: Scheduler
-  /** Skip API authentication � for testing only. NEVER set in production. */
+  /** Skip API authentication — for testing only. NEVER set in production. */
   skipAuth?: boolean
 }
 
 export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hono {
   const app = new Hono()
 
-  // --- Health check � unauthenticated ---
+  // --- CORS — allow dashboard cross-origin requests ---
+  const corsOrigin = process.env.SHACKLEAI_CORS_ORIGIN
+  app.use(
+    '/api/*',
+    cors({
+      origin: corsOrigin
+        ? corsOrigin.split(',').map((o) => o.trim())
+        : (origin) => {
+            // In development, allow any localhost origin (any port)
+            if (origin && /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
+              return origin
+            }
+            return null
+          },
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Authorization', 'Content-Type'],
+      exposeHeaders: ['X-Total-Count'],
+      maxAge: 86400,
+    }),
+  )
+
+  // --- Health check — unauthenticated ---
   app.get('/api/health', (c) => {
     return c.json({ status: 'ok', version: VERSION })
   })
 
-  // --- Global API authentication � protects all /api/* routes except /api/health ---
+  // --- Global API authentication — protects all /api/* routes except /api/health ---
   if (!options?.skipAuth) {
     const apiAuthMiddleware = createApiAuth(db)
     app.use('/api/*', async (c, next) => {
