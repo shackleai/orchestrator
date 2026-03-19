@@ -40,6 +40,18 @@ export class PGliteProvider implements DatabaseProvider {
     await this.db.exec(sql)
   }
 
+  async transaction<T>(fn: (tx: DatabaseProvider) => Promise<T>): Promise<T> {
+    await this.db.exec('BEGIN')
+    try {
+      const result = await fn(this)
+      await this.db.exec('COMMIT')
+      return result
+    } catch (error) {
+      await this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
   async close(): Promise<void> {
     await this.db.close()
   }
