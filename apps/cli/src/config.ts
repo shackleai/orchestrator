@@ -102,11 +102,51 @@ export async function rollbackConfig(): Promise<ShackleAIConfig | null> {
   return config
 }
 
+/** Pattern matching sensitive key names (case-insensitive). */
+const SENSITIVE_PATTERN = /secret|token|password|key/i
+
+/**
+ * Recursively redact sensitive fields from a config object.
+ * - `databaseUrl` is always redacted.
+ * - Any key matching SENSITIVE_PATTERN is redacted unless it is in SAFE_KEYS.
+ * - If a key matches the sensitive pattern and its value is a nested object,
+ *   all leaf values within that object are redacted (e.g. llmKeys.openai).
+ * - Non-sensitive nested objects are traversed normally.
+ */
+export function redactSensitiveFields(
+  obj: Record<string, unknown>,
+  redactAll = false,
+): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {}
+
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'databaseUrl') {
+      redacted[k] = '***REDACTED***'
+    } else if (redactAll && typeof v === 'string') {
+      redacted[k] = '***REDACTED***'
+    } else if (
+      v !== null &&
+      v !== undefined &&
+      typeof v === 'object' &&
+      !Array.isArray(v)
+    ) {
+      const childRedactAll = redactAll || (!SAFE_KEYS.has(k) && SENSITIVE_PATTERN.test(k))
+      redacted[k] = redactSensitiveFields(v as Record<string, unknown>, childRedactAll)
+    } else if (!SAFE_KEYS.has(k) && SENSITIVE_PATTERN.test(k)) {
+      redacted[k] = '***REDACTED***'
+    } else if (redactAll) {
+      redacted[k] = '***REDACTED***'
+    } else {
+      redacted[k] = v
+    }
+  }
+
+  return redacted
+}
+
 /**
  * Export current config with secrets redacted.
- * Replaces databaseUrl and any value whose key contains
- * secret, token, password, or key (case-insensitive) with "***REDACTED***".
- * Well-known safe keys (issue_prefix, etc.) are not redacted.
+ * Nested objects (e.g. llmKeys) are traversed recursively.
  */
 export async function exportConfig(): Promise<string | null> {
   const config = await readConfig()
@@ -114,18 +154,6 @@ export async function exportConfig(): Promise<string | null> {
     return null
   }
 
-  const sensitivePattern = /secret|token|password|key/i
-  const redacted: Record<string, unknown> = {}
-
-  for (const [k, v] of Object.entries(config)) {
-    if (k === 'databaseUrl') {
-      redacted[k] = '***REDACTED***'
-    } else if (!SAFE_KEYS.has(k) && sensitivePattern.test(k)) {
-      redacted[k] = '***REDACTED***'
-    } else {
-      redacted[k] = v
-    }
-  }
-
+  const redacted = redactSensitiveFields(config as unknown as Record<string, unknown>)
   return JSON.stringify(redacted, null, 2)
 }
