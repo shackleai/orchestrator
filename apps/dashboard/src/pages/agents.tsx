@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
 import { useDebounce } from '@/hooks/useDebounce'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { Bot, Plus, Play, Loader2, Search, X } from 'lucide-react'
 import {
   Table,
@@ -28,10 +29,10 @@ import {
   type CreateAgentPayload,
 } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
+import { usePagination } from '@/hooks/usePagination'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 
-const AGENTS_PAGE_SIZE = 20
 
 function cronToLabel(cron: string | undefined): string {
   if (!cron) return 'Manual'
@@ -511,28 +512,29 @@ function AgentActions({ companyId, agent }: { companyId: string; agent: Agent })
 
 export function AgentsPage() {
   const companyId = useCompanyId()
+  const agentsInterval = usePollingInterval(POLLING_INTERVALS.agents)
   const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [adapterFilter, setAdapterFilter] = useState('')
-  const [page, setPage] = useState(0)
+  const { page, perPage, offset, setPage, setPerPage } = usePagination({ defaultPerPage: 25 })
 
   const debouncedSearch = useDebounce(search, 300)
 
   const { data: rawAgents, isLoading, error } = useQuery<Agent[]>({
-    queryKey: ['agents', companyId, page],
+    queryKey: ['agents', companyId, page, perPage],
     queryFn: () =>
       fetchAgents(companyId!, {
-        limit: AGENTS_PAGE_SIZE + 1,
-        offset: page * AGENTS_PAGE_SIZE,
+        limit: perPage + 1,
+        offset,
       }),
     enabled: !!companyId,
-    refetchInterval: 10_000,
+    refetchInterval: agentsInterval,
   })
 
-  const hasMore = (rawAgents?.length ?? 0) > AGENTS_PAGE_SIZE
-  const agents = rawAgents ? rawAgents.slice(0, AGENTS_PAGE_SIZE) : undefined
+  const hasMore = (rawAgents?.length ?? 0) > perPage
+  const agents = rawAgents ? rawAgents.slice(0, perPage) : undefined
 
   const STATUS_OPTIONS = ['idle', 'active', 'paused', 'terminated'] as const
 
@@ -722,10 +724,11 @@ export function AgentsPage() {
             </Table>
             <Pagination
               page={page}
-              pageSize={AGENTS_PAGE_SIZE}
+              pageSize={perPage}
               total={-1}
               hasMore={hasMore}
               onPageChange={setPage}
+              onPageSizeChange={setPerPage}
             />
           </CardContent>
         </Card>

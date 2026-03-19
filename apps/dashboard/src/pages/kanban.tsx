@@ -2,6 +2,7 @@ import { useState, type DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { useToast } from '@/components/ui/toast'
 import { LayoutGrid } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -118,6 +119,7 @@ for (const col of COLUMNS) {
 
 export function KanbanPage() {
   const companyId = useCompanyId()
+  const kanbanInterval = usePollingInterval(POLLING_INTERVALS.kanban)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -131,6 +133,7 @@ export function KanbanPage() {
     queryKey: ['tasks', companyId],
     queryFn: () => fetchTasks(companyId!),
     enabled: !!companyId,
+    refetchInterval: kanbanInterval,
   })
 
   const { data: agents } = useQuery<Agent[]>({

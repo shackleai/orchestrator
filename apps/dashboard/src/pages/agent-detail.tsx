@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { useState } from 'react'
 import { ArrowLeft, Bot, Activity, Play, Pause, XCircle, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -202,6 +203,7 @@ function HeartbeatTable({ heartbeats }: { heartbeats: HeartbeatRun[] }) {
 export function AgentDetailPage() {
   const { id: agentId } = useParams<{ id: string }>()
   const companyId = useCompanyId()
+  const agentDetailInterval = usePollingInterval(POLLING_INTERVALS.agents)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -290,7 +292,7 @@ export function AgentDetailPage() {
     queryKey: ['agent', companyId, agentId],
     queryFn: () => fetchAgent(companyId!, agentId!),
     enabled: !!companyId && !!agentId,
-    refetchInterval: 5_000,
+    refetchInterval: agentDetailInterval,
   })
 
   const [heartbeatPage, setHeartbeatPage] = useState(0)
@@ -303,7 +305,7 @@ export function AgentDetailPage() {
         offset: heartbeatPage * HEARTBEATS_PAGE_SIZE,
       }),
     enabled: !!companyId && !!agentId,
-    refetchInterval: 5_000,
+    refetchInterval: agentDetailInterval,
   })
 
   const heartbeatsHasMore = (rawHeartbeats?.length ?? 0) > HEARTBEATS_PAGE_SIZE

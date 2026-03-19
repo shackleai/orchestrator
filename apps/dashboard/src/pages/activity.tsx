@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { Activity } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,9 +9,9 @@ import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { fetchActivity, type ActivityLogEntry } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
+import { usePagination } from '@/hooks/usePagination'
 import { formatRelativeTime } from '@/lib/utils'
 
-const ACTIVITY_PAGE_SIZE = 30
 
 const entityTypeOptions = [
   { value: '', label: 'All entities' },
@@ -65,27 +66,28 @@ function ActivityEmpty() {
 
 export function ActivityPage() {
   const companyId = useCompanyId()
+  const activityInterval = usePollingInterval(POLLING_INTERVALS.activity)
   const [entityType, setEntityType] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const [page, setPage] = useState(0)
+  const { page, perPage, offset, setPage, setPerPage, resetPage } = usePagination({ defaultPerPage: 25 })
 
   // Reset to page 0 when filters change
   const handleEntityTypeChange = (value: string) => {
     setEntityType(value)
-    setPage(0)
+    resetPage()
   }
   const handleFromDateChange = (value: string) => {
     setFromDate(value)
-    setPage(0)
+    resetPage()
   }
   const handleToDateChange = (value: string) => {
     setToDate(value)
-    setPage(0)
+    resetPage()
   }
 
   const { data: rawEntries, isLoading, error } = useQuery<ActivityLogEntry[]>({
-    queryKey: ['activity', companyId, entityType, fromDate, toDate, page],
+    queryKey: ['activity', companyId, entityType, fromDate, toDate, page, perPage],
     queryFn: () =>
       fetchActivity(
         companyId!,
@@ -95,16 +97,16 @@ export function ActivityPage() {
           to: toDate || undefined,
         },
         {
-          limit: ACTIVITY_PAGE_SIZE + 1,
-          offset: page * ACTIVITY_PAGE_SIZE,
+          limit: perPage + 1,
+          offset,
         },
       ),
     enabled: !!companyId,
-    refetchInterval: 10_000,
+    refetchInterval: activityInterval,
   })
 
-  const hasMore = (rawEntries?.length ?? 0) > ACTIVITY_PAGE_SIZE
-  const entries = rawEntries ? rawEntries.slice(0, ACTIVITY_PAGE_SIZE) : undefined
+  const hasMore = (rawEntries?.length ?? 0) > perPage
+  const entries = rawEntries ? rawEntries.slice(0, perPage) : undefined
 
   return (
     <div className="space-y-4">
@@ -202,10 +204,11 @@ export function ActivityPage() {
             </ul>
             <Pagination
               page={page}
-              pageSize={ACTIVITY_PAGE_SIZE}
+              pageSize={perPage}
               total={-1}
               hasMore={hasMore}
               onPageChange={setPage}
+              onPageSizeChange={setPerPage}
             />
           </CardContent>
         </Card>

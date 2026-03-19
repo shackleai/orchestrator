@@ -230,10 +230,15 @@ export function fetchCompanies() {
 export function fetchCostEvents(
   companyId: string,
   filters?: { from?: string; to?: string },
+  pagination?: { limit: number; offset: number },
 ) {
   const params = new URLSearchParams()
   if (filters?.from) params.set('from', filters.from)
   if (filters?.to) params.set('to', filters.to)
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
   const qs = params.toString()
   return fetchJson<CostEvent[]>(
     `${BASE_URL}/companies/${companyId}/costs${qs ? `?${qs}` : ''}`,

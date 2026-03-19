@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { DollarSign } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -22,6 +23,8 @@ import {
   type Company,
 } from '@/lib/api'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
+import { Pagination } from '@/components/ui/pagination'
+import { usePagination } from '@/hooks/usePagination'
 
 function BudgetGauge({
   spent,
@@ -218,11 +221,20 @@ function CostsSkeleton() {
 
 export function CostsPage() {
   const companyId = useCompanyId()
+  const costsInterval = usePollingInterval(POLLING_INTERVALS.costs)
+  const { page, perPage, offset, setPage, setPerPage } = usePagination({ defaultPerPage: 25 })
+
+  const { data: allEvents } = useQuery<CostEvent[]>({
+    queryKey: ['cost-events-all', companyId],
+    queryFn: () => fetchCostEvents(companyId!),
+    enabled: !!companyId,
+  })
 
   const { data: dashboard, isLoading: dashLoading } = useQuery<DashboardData>({
     queryKey: ['dashboard', companyId],
     queryFn: () => fetchDashboard(companyId!),
     enabled: !!companyId,
+    refetchInterval: costsInterval,
   })
 
   const { data: company } = useQuery<Company>({
@@ -235,13 +247,21 @@ export function CostsPage() {
     queryKey: ['costs-by-agent', companyId],
     queryFn: () => fetchCostsByAgent(companyId!),
     enabled: !!companyId,
+    refetchInterval: costsInterval,
   })
 
-  const { data: events, isLoading: eventsLoading } = useQuery<CostEvent[]>({
-    queryKey: ['cost-events', companyId],
-    queryFn: () => fetchCostEvents(companyId!),
+  const { data: rawEvents, isLoading: eventsLoading } = useQuery<CostEvent[]>({
+    queryKey: ['cost-events', companyId, page, perPage],
+    queryFn: () => fetchCostEvents(companyId!, undefined, {
+      limit: perPage + 1,
+      offset,
+    }),
     enabled: !!companyId,
+    refetchInterval: costsInterval,
   })
+
+  const hasMoreEvents = (rawEvents?.length ?? 0) > perPage
+  const events = rawEvents ? rawEvents.slice(0, perPage) : undefined
 
   const isLoading = dashLoading || agentLoading || eventsLoading
 
@@ -316,7 +336,7 @@ export function CostsPage() {
       </Card>
 
       {/* Daily Spend Trend */}
-      <DailySpendChart events={events} />
+      <DailySpendChart events={allEvents} />
 
       {/* Recent Cost Events */}
       <Card>
@@ -329,6 +349,7 @@ export function CostsPage() {
               No cost events recorded
             </p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -371,6 +392,15 @@ export function CostsPage() {
                 ))}
               </TableBody>
             </Table>
+            <Pagination
+              page={page}
+              pageSize={perPage}
+              total={-1}
+              hasMore={hasMoreEvents}
+              onPageChange={setPage}
+              onPageSizeChange={setPerPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>
