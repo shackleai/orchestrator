@@ -16,6 +16,8 @@ import type {
   AgentWorktree,
   WorktreeInfo,
   CleanupResult,
+  WorkspacePolicyCheckResult,
+  WorkspaceOperationType,
 } from '@shackleai/shared'
 import {
   WorktreeStatus,
@@ -23,6 +25,7 @@ import {
   WORKTREE_MAX_AGE_MS,
   GIT_MIN_VERSION,
 } from '@shackleai/shared'
+import { WorkspacePolicyEngine } from './policy.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -105,9 +108,44 @@ interface CleanupOptions {
 
 export class WorktreeManager {
   private db: DatabaseProvider
+  private policyEngine: WorkspacePolicyEngine
 
   constructor(db: DatabaseProvider) {
     this.db = db
+    this.policyEngine = new WorkspacePolicyEngine(db)
+  }
+  /**
+   * Check whether an agent is allowed to perform an operation in a workspace.
+   * Call this before executing any workspace operation to enforce policies.
+   *
+   * @throws Error if the operation is denied by policy
+   */
+  async enforcePolicy(
+    agentId: string,
+    workspaceId: string,
+    operation: WorkspaceOperationType,
+    filePath?: string,
+  ): Promise<WorkspacePolicyCheckResult> {
+    const result = await this.policyEngine.checkPolicy({
+      agentId,
+      workspaceId,
+      operation,
+      filePath,
+    })
+
+    if (!result.allowed) {
+      throw new Error(
+        `Workspace policy violation: ${result.reason} ` +
+          `(agent=${agentId}, workspace=${workspaceId}, op=${operation})`,
+      )
+    }
+
+    return result
+  }
+
+  /** Access the underlying policy engine for rule management. */
+  get policy(): WorkspacePolicyEngine {
+    return this.policyEngine
   }
 
   // ── Create ──────────────────────────────────────────────────────────────

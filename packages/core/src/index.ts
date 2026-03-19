@@ -52,6 +52,7 @@ export { LicenseManager } from './license.js'
 export type { LicenseStatus, ActivationResult } from './license.js'
 
 export { WorktreeManager } from './worktree/index.js'
+export { WorkspacePolicyEngine } from './worktree/index.js'
 export { WorkspaceOperationLogger } from './worktree/index.js'
 export type { LogOperationInput, OperationFilters } from './worktree/index.js'
 
