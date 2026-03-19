@@ -479,3 +479,21 @@ export function fetchIssueLabels(companyId: string, issueId: string) {
 export function fetchLabels(companyId: string) {
   return fetchJson<Label[]>(`${BASE_URL}/companies/${companyId}/labels`)
 }
+
+// --- Inbox counts ---
+
+export interface InboxCounts {
+  unread_issues: number
+  pending_approvals: number
+  new_comments: number
+  total: number
+}
+
+export function fetchInboxCounts(
+  companyId: string,
+  userOrAgentId: string,
+) {
+  return fetchJson<InboxCounts>(
+    `${BASE_URL}/companies/${companyId}/inbox/count?user_or_agent_id=${encodeURIComponent(userOrAgentId)}`,
+  )
+}

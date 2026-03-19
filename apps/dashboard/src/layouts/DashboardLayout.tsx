@@ -24,14 +24,27 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp'
 import { useRecentPages } from '@/hooks/useRecentPages'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useInboxCounts } from '@/hooks/useInboxCounts'
+import { useCompanyPageMemory } from '@/hooks/useCompanyPageMemory'
 
-const navItems = [
+/** Badge key used to map nav items to inbox count fields. */
+type BadgeKey = 'unread_issues' | 'pending_approvals' | 'new_comments'
+
+interface NavItem {
+  to: string
+  icon: typeof LayoutDashboard
+  label: string
+  end?: boolean
+  badgeKey?: BadgeKey
+}
+
+const navItems: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', end: true },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/org-chart', icon: Network, label: 'Org Chart' },
-  { to: '/tasks', icon: ListTodo, label: 'Tasks' },
+  { to: '/tasks', icon: ListTodo, label: 'Tasks', badgeKey: 'unread_issues' },
   { to: '/board', icon: LayoutGrid, label: 'Board' },
-  { to: '/activity', icon: Activity, label: 'Activity' },
+  { to: '/activity', icon: Activity, label: 'Activity', badgeKey: 'new_comments' },
   { to: '/costs', icon: DollarSign, label: 'Costs' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
@@ -51,6 +64,10 @@ export function DashboardLayout() {
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
   const location = useLocation()
   const { addRecentPage } = useRecentPages()
+  const { counts } = useInboxCounts()
+
+  // Remember last visited page per company, restore on switch
+  useCompanyPageMemory()
 
   // Global keyboard shortcuts (g+a, g+i, Shift+?, etc.)
   const { shortcuts } = useKeyboardShortcuts({
@@ -134,25 +151,36 @@ export function DashboardLayout() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-1 p-3" aria-label="Main navigation">
-          {navItems.map(({ to, icon: Icon, label, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-secondary text-foreground'
-                    : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
-                )
-              }
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-            </NavLink>
-          ))}
+          {navItems.map(({ to, icon: Icon, label, end, badgeKey }) => {
+            const badgeCount = badgeKey ? counts[badgeKey] : 0
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
+                  )
+                }
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{label}</span>
+                {badgeCount > 0 && (
+                  <span
+                    className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold tabular-nums text-amber-400"
+                    aria-label={`${badgeCount} ${label.toLowerCase()} notification${badgeCount !== 1 ? 's' : ''}`}
+                  >
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </span>
+                )}
+              </NavLink>
+            )
+          })}
         </nav>
 
         {/* Footer */}

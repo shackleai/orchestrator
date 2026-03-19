@@ -10,6 +10,7 @@ export const POLLING_INTERVALS = {
   activity: 5_000,
   costs: 10_000,
   overview: 5_000,
+  inbox: 10_000,
 } as const
 
 // --- Page visibility external store ---
