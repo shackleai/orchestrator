@@ -2,20 +2,42 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { ArrowLeft, ListTodo, Loader2, Send } from 'lucide-react'
+import {
+  ArrowLeft,
+  ListTodo,
+  Loader2,
+  Send,
+  Clock,
+  Tag,
+  GitBranch,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
   fetchIssue,
+  fetchTasks,
   fetchComments,
   fetchAgents,
+  fetchActivity,
+  fetchIssueLabels,
   createComment,
   updateIssue,
   type Issue,
   type Comment,
   type Agent,
+  type Label,
+  type ActivityLogEntry,
 } from '@/lib/api'
 import { formatDate, formatRelativeTime } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
@@ -259,6 +281,143 @@ function EditableDescription({
   )
 }
 
+const statusVariant: Record<
+  string,
+  'success' | 'warning' | 'destructive' | 'secondary' | 'info'
+> = {
+  backlog: 'secondary',
+  todo: 'secondary',
+  in_progress: 'info',
+  in_review: 'warning',
+  done: 'success',
+  cancelled: 'destructive',
+}
+
+const priorityVariant: Record<
+  string,
+  'destructive' | 'warning' | 'secondary'
+> = {
+  critical: 'destructive',
+  high: 'warning',
+  medium: 'secondary',
+  low: 'secondary',
+}
+
+function statusLabel(status: string): string {
+  return status.replace(/_/g, ' ')
+}
+
+function ActivityItem({ entry }: { entry: ActivityLogEntry }) {
+  const changesSummary = entry.changes
+    ? Object.keys(entry.changes).join(', ')
+    : null
+
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-border last:border-b-0">
+      <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm">
+          <span className="font-medium capitalize">{entry.action}</span>
+          {' '}
+          <span className="text-muted-foreground">{entry.entity_type}</span>
+          {entry.actor_id && (
+            <span className="text-muted-foreground">
+              {' '}by {entry.actor_type === 'agent' ? 'agent' : 'user'}{' '}
+              {entry.actor_id.slice(0, 8)}
+            </span>
+          )}
+        </p>
+        {changesSummary && (
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Changed: {changesSummary}
+          </p>
+        )}
+      </div>
+      <span className="text-xs text-muted-foreground shrink-0">
+        {formatRelativeTime(entry.created_at)}
+      </span>
+    </div>
+  )
+}
+
+function ChildTaskRow({
+  task,
+  agentMap,
+}: {
+  task: Issue
+  agentMap: Map<string, Agent>
+}) {
+  const assignee = task.assignee_agent_id
+    ? agentMap.get(task.assignee_agent_id)
+    : null
+
+  return (
+    <TableRow>
+      <TableCell className="font-mono text-xs text-muted-foreground">
+        <Link
+          to={`/tasks/${task.id}`}
+          className="hover:text-primary hover:underline"
+        >
+          {task.identifier}
+        </Link>
+      </TableCell>
+      <TableCell className="max-w-[250px] truncate">
+        <Link
+          to={`/tasks/${task.id}`}
+          className="text-sm hover:text-primary hover:underline"
+        >
+          {task.title}
+        </Link>
+      </TableCell>
+      <TableCell>
+        <Badge
+          variant={statusVariant[task.status] ?? 'secondary'}
+          className="capitalize"
+        >
+          {statusLabel(task.status)}
+        </Badge>
+      </TableCell>
+      <TableCell className="hidden sm:table-cell">
+        <Badge
+          variant={priorityVariant[task.priority] ?? 'secondary'}
+          className="capitalize"
+        >
+          {task.priority}
+        </Badge>
+      </TableCell>
+      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+        {assignee ? assignee.name : 'Unassigned'}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function LabelsDisplay({ labels }: { labels: Label[] }) {
+  if (labels.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground italic">No labels</span>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {labels.map((label) => (
+        <span
+          key={label.id}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border"
+          style={{
+            borderColor: label.color,
+            color: label.color,
+          }}
+        >
+          <Tag className="h-3 w-3" />
+          {label.name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function TaskDetailPage() {
   const { id: taskId } = useParams<{ id: string }>()
   const companyId = useCompanyId()
@@ -286,28 +445,45 @@ export function TaskDetailPage() {
     enabled: !!companyId,
   })
 
-  const { toast } = useToast()
+  const { data: labels } = useQuery<Label[]>({
+    queryKey: ['issue-labels', companyId, taskId],
+    queryFn: () => fetchIssueLabels(companyId!, taskId!),
+    enabled: !!companyId && !!taskId,
+  })
+
+  const { data: activity } = useQuery<ActivityLogEntry[]>({
+    queryKey: ['activity', companyId, 'issue', taskId],
+    queryFn: () => fetchActivity(companyId!, { entity_type: 'issue' }),
+    enabled: !!companyId && !!taskId,
+    select: (data) =>
+      data.filter((entry) => entry.entity_id === taskId),
+  })
+
+  const { data: allTasks } = useQuery<Issue[]>({
+    queryKey: ['tasks', companyId, 'children-of', taskId],
+    queryFn: () => fetchTasks(companyId!),
+    enabled: !!companyId && !!taskId,
+    select: (data) => data.filter((t) => t.parent_id === taskId),
+  })
+  const childTasks = allTasks ?? []
+
+  const { data: parentTask } = useQuery<Issue>({
+    queryKey: ['task', companyId, task?.parent_id],
+    queryFn: () => fetchIssue(companyId!, task!.parent_id!),
+    enabled: !!companyId && !!task?.parent_id,
+  })
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<Issue>) => updateIssue(companyId!, taskId!, data),
-    onSuccess: (_data, variables) => {
+    mutationFn: (data: Partial<Issue>) =>
+      updateIssue(companyId!, taskId!, data),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', companyId, taskId] })
-      const field = Object.keys(variables)[0]
-      const labels: Record<string, string> = {
-        title: 'Title updated',
-        description: 'Description updated',
-        status: 'Status updated',
-        priority: 'Priority updated',
-        assignee_agent_id: 'Assignee updated',
-      }
-      toast(labels[field] ?? 'Task updated', 'success')
-    },
-    onError: (err: Error) => {
-      toast(`Failed to update task: ${err.message}`, 'error')
+      queryClient.invalidateQueries({ queryKey: ['tasks', companyId] })
     },
   })
 
   if (taskLoading) return <DetailSkeleton />
+
   if (taskError) {
     return (
       <div className="py-20 text-center text-sm text-muted-foreground">
@@ -315,6 +491,7 @@ export function TaskDetailPage() {
       </div>
     )
   }
+
   if (!task) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-20">
@@ -331,16 +508,22 @@ export function TaskDetailPage() {
     }
   }
 
-  const assignee = task.assignee_agent_id ? agentMap.get(task.assignee_agent_id) : null
-
-  // Sort comments newest first
   const sortedComments = comments
-    ? [...comments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    ? [...comments].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+    : []
+
+  const sortedActivity = activity
+    ? [...activity].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
     : []
 
   return (
     <div className="space-y-6">
-      {/* Back link + title */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" asChild>
           <Link to="/tasks" aria-label="Back to tasks">
@@ -348,7 +531,23 @@ export function TaskDetailPage() {
           </Link>
         </Button>
         <div className="flex-1 min-w-0">
-          <span className="font-mono text-xs text-muted-foreground">{task.identifier}</span>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="font-mono text-xs text-muted-foreground">
+              {task.identifier}
+            </span>
+            <Badge
+              variant={statusVariant[task.status] ?? 'secondary'}
+              className="capitalize"
+            >
+              {statusLabel(task.status)}
+            </Badge>
+            <Badge
+              variant={priorityVariant[task.priority] ?? 'secondary'}
+              className="capitalize"
+            >
+              {task.priority}
+            </Badge>
+          </div>
           <EditableTitle
             value={task.title}
             onSave={(title) => updateMutation.mutate({ title })}
@@ -357,17 +556,27 @@ export function TaskDetailPage() {
         </div>
       </div>
 
+      {parentTask && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <GitBranch className="h-4 w-4" />
+          <span>Parent:</span>
+          <Link
+            to={`/tasks/${parentTask.id}`}
+            className="text-primary hover:underline truncate"
+          >
+            {parentTask.identifier} {'\u2014'} {parentTask.title}
+          </Link>
+        </div>
+      )}
+
       {updateMutation.isError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
           Failed to update: {(updateMutation.error as Error).message}
         </div>
       )}
 
-      {/* Main content: description + sidebar */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left column: description + comments */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Description */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Description</CardTitle>
@@ -381,7 +590,37 @@ export function TaskDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Comments */}
+          {childTasks.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Sub-tasks
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    ({childTasks.length})
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="hidden sm:table-cell">Priority</TableHead>
+                      <TableHead className="hidden md:table-cell">Assignee</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {childTasks.map((child) => (
+                      <ChildTaskRow key={child.id} task={child} agentMap={agentMap} />
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -397,7 +636,6 @@ export function TaskDetailPage() {
               {companyId && taskId && (
                 <AddCommentForm companyId={companyId} issueId={taskId} />
               )}
-
               {commentsLoading ? (
                 <div className="space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -405,9 +643,7 @@ export function TaskDetailPage() {
                   ))}
                 </div>
               ) : sortedComments.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  No comments yet
-                </p>
+                <p className="py-6 text-center text-sm text-muted-foreground">No comments yet</p>
               ) : (
                 <div>
                   {sortedComments.map((comment) => (
@@ -417,9 +653,32 @@ export function TaskDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Activity
+                {sortedActivity.length > 0 && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    ({sortedActivity.length})
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sortedActivity.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No activity recorded yet</p>
+              ) : (
+                <div>
+                  {sortedActivity.map((entry) => (
+                    <ActivityItem key={entry.id} entry={entry} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Right column: metadata sidebar */}
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -435,9 +694,7 @@ export function TaskDetailPage() {
                   aria-label="Change status"
                 >
                   {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </Select>
               </InfoRow>
@@ -451,47 +708,104 @@ export function TaskDetailPage() {
                   aria-label="Change priority"
                 >
                   {PRIORITY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </Select>
               </InfoRow>
 
               <InfoRow label="Assignee">
-                {assignee ? (
-                  <Link
-                    to={`/agents/${assignee.id}`}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    {assignee.name}
-                  </Link>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Unassigned</span>
-                )}
+                <Select
+                  value={task.assignee_agent_id ?? ''}
+                  onChange={(e) =>
+                    updateMutation.mutate({
+                      assignee_agent_id: e.target.value || null,
+                    } as Partial<Issue>)
+                  }
+                  disabled={updateMutation.isPending}
+                  className="h-7 w-auto text-xs"
+                  aria-label="Change assignee"
+                >
+                  <option value="">Unassigned</option>
+                  {agents?.map((agent) => (
+                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </Select>
               </InfoRow>
 
               <InfoRow label="Identifier">
                 <span className="font-mono text-xs">{task.identifier}</span>
               </InfoRow>
 
-              <InfoRow label="Created">
-                {formatDate(task.created_at)}
-              </InfoRow>
+              <InfoRow label="Created">{formatDate(task.created_at)}</InfoRow>
 
               {task.started_at && (
-                <InfoRow label="Started">
-                  {formatDate(task.started_at)}
-                </InfoRow>
+                <InfoRow label="Started">{formatDate(task.started_at)}</InfoRow>
               )}
 
               {task.completed_at && (
-                <InfoRow label="Completed">
-                  {formatDate(task.completed_at)}
-                </InfoRow>
+                <InfoRow label="Completed">{formatDate(task.completed_at)}</InfoRow>
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Tag className="h-4 w-4" />
+                Labels
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LabelsDisplay labels={labels ?? []} />
+            </CardContent>
+          </Card>
+
+          {(parentTask || childTasks.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <GitBranch className="h-4 w-4" />
+                  Related Tasks
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {parentTask && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Parent</span>
+                    <Link
+                      to={`/tasks/${parentTask.id}`}
+                      className="block text-sm text-primary hover:underline truncate"
+                    >
+                      {parentTask.identifier} {'\u2014'} {parentTask.title}
+                    </Link>
+                  </div>
+                )}
+                {childTasks.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">
+                      Sub-tasks ({childTasks.length})
+                    </span>
+                    <div className="space-y-1 mt-1">
+                      {childTasks.slice(0, 5).map((child) => (
+                        <Link
+                          key={child.id}
+                          to={`/tasks/${child.id}`}
+                          className="block text-sm text-primary hover:underline truncate"
+                        >
+                          {child.identifier} {'\u2014'} {child.title}
+                        </Link>
+                      ))}
+                      {childTasks.length > 5 && (
+                        <p className="text-xs text-muted-foreground">
+                          +{childTasks.length - 5} more
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
