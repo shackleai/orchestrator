@@ -21,6 +21,7 @@ import {
   CrewAIAdapter,
   GovernanceEngine,
   QuotaManager,
+  createStorageProvider,
 } from '@shackleai/core'
 import { AgentApiKeyStatus } from '@shackleai/shared'
 import { readConfig, writeConfig, resolveDatabaseUrl } from '../config.js'
@@ -109,7 +110,10 @@ export async function startCommand(options: { port: number }): Promise<void> {
   )
   await scheduler.start()
 
-  const app = createApp(db, { scheduler })
+  // Storage provider for file attachments (defaults to local disk)
+  const storage = createStorageProvider({ type: 'local-disk' })
+
+  const app = createApp(db, { scheduler, storage })
 
   // Find an available port — try requested port first, then auto-increment
   const requestedPort = options.port

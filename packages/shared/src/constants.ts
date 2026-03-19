@@ -135,6 +135,20 @@ export const WorktreeStatus = {
 export type WorktreeStatus =
   (typeof WorktreeStatus)[keyof typeof WorktreeStatus]
 
+export const WorkProductType = {
+  PullRequest: 'pull_request',
+  Document: 'document',
+  Report: 'report',
+  Artifact: 'artifact',
+  Deployment: 'deployment',
+  Other: 'other',
+} as const
+export type WorkProductType =
+  (typeof WorkProductType)[keyof typeof WorkProductType]
+
+/** Maximum file size for attachments (10 MB). */
+export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
+
 /** Free tier limit for concurrent active worktrees per company. */
 export const FREE_TIER_MAX_WORKTREES = 5
 

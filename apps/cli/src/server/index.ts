@@ -9,7 +9,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from '@hono/node-server/serve-static'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { Scheduler } from '@shackleai/core'
+import type { Scheduler, StorageProvider } from '@shackleai/core'
 import { companiesRouter } from './routes/companies.js'
 import { dashboardRouter } from './routes/dashboard.js'
 import { agentsRouter } from './routes/agents.js'
@@ -28,12 +28,16 @@ import { secretsRouter } from './routes/secrets.js'
 import { quotasRouter } from './routes/quotas.js'
 import { labelsRouter } from './routes/labels.js'
 import { templatesRouter, companyTemplatesRouter } from './routes/templates.js'
+import { attachmentsRouter } from './routes/attachments.js'
+import { workProductsRouter } from './routes/work-products.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
 
 export interface CreateAppOptions {
   scheduler?: Scheduler
+  /** Pluggable file storage backend for attachments. */
+  storage?: StorageProvider
   /** Skip API authentication — for testing only. NEVER set in production. */
   skipAuth?: boolean
 }
@@ -97,6 +101,10 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', secretsRouter(db))
   app.route('/api/companies', quotasRouter(db))
   app.route('/api/companies', labelsRouter(db))
+  if (options?.storage) {
+    app.route('/api/companies', attachmentsRouter(db, options.storage))
+  }
+  app.route('/api/companies', workProductsRouter(db))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)
