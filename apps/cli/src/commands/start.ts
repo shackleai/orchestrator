@@ -27,11 +27,16 @@ import { VERSION } from '../index.js'
 export async function startCommand(options: { port: number }): Promise<void> {
   let config = await readConfig()
 
+  // DB may be created by autoInitFromEnv — reused to avoid double initialization
+  let db: DatabaseProvider | undefined
+
   if (!config) {
     // Auto-init from env vars — supports Docker deployments without interactive `init`
     const companyName = process.env.SHACKLEAI_COMPANY_NAME
     if (companyName) {
-      config = await autoInitFromEnv(companyName)
+      const result = await autoInitFromEnv(companyName)
+      config = result.config
+      db = result.db
     } else {
       console.error(
         'No configuration found. Run `shackleai init` first to set up.',
@@ -48,20 +53,22 @@ export async function startCommand(options: { port: number }): Promise<void> {
     process.env.ANTHROPIC_API_KEY = config.llmKeys.anthropic
   }
 
-  // Initialize DB
-  let db: DatabaseProvider
-  if (config.mode === 'local') {
-    db = new PGliteProvider(config.dataDir ?? 'default')
-  } else {
-    if (!config.databaseUrl) {
-      console.error(
-        'Server mode requires a DATABASE_URL. Run `shackleai init` again.',
-      )
-      process.exit(1)
+  // Initialize DB if not already created by autoInitFromEnv
+  if (!db) {
+    if (config.mode === 'local') {
+      db = new PGliteProvider(config.dataDir ?? 'default')
+    } else {
+      if (!config.databaseUrl) {
+        console.error(
+          'Server mode requires a DATABASE_URL. Run `shackleai init` again.',
+        )
+        process.exit(1)
+      }
+      db = new PgProvider(config.databaseUrl)
     }
-    db = new PgProvider(config.databaseUrl)
   }
 
+  // runMigrations has a WeakSet guard — safe even if autoInitFromEnv already ran it
   await runMigrations(db)
 
   // Initialize core services
@@ -124,7 +131,7 @@ export async function startCommand(options: { port: number }): Promise<void> {
   const shutdown = () => {
     console.log('\n  Shutting down ShackleAI Orchestrator...')
     scheduler.stop()
-    db.close().catch(() => {})
+    db!.close().catch(() => {})
     process.exit(0)
   }
   process.on('SIGINT', shutdown)
@@ -142,7 +149,9 @@ export async function startCommand(options: { port: number }): Promise<void> {
  *   SHACKLEAI_MODE         — "local" (default) or "server"
  *   SHACKLEAI_DATABASE_URL — PostgreSQL URL (required when mode=server)
  */
-async function autoInitFromEnv(companyName: string): Promise<ShackleAIConfig> {
+async function autoInitFromEnv(
+  companyName: string,
+): Promise<{ config: ShackleAIConfig; db: DatabaseProvider }> {
   console.log(`  Auto-initializing from environment variables...`)
 
   const mode = (process.env.SHACKLEAI_MODE ?? 'local') as 'local' | 'server'
@@ -197,8 +206,6 @@ async function autoInitFromEnv(companyName: string): Promise<ShackleAIConfig> {
     }
   }
 
-  await db.close()
-
   const config: ShackleAIConfig = {
     mode,
     companyId,
@@ -209,7 +216,8 @@ async function autoInitFromEnv(companyName: string): Promise<ShackleAIConfig> {
 
   await writeConfig(config)
   console.log(`  Initialized company "${companyName.trim()}" (${companyId})`)
-  return config
+  // Return both config and the open DB — caller reuses this connection
+  return { config, db }
 }
 
 /** Check if a port is available by trying to listen on it */
