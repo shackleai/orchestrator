@@ -1,0 +1,65 @@
+{
+  "name": "Startup",
+  "description": "A lean startup team with CEO, CTO, and engineer agents for rapid iteration.",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "name": "CEO",
+      "title": "Chief Executive Officer",
+      "role": "ceo",
+      "capabilities": "Vision setting, strategic planning, resource allocation, stakeholder management",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 5000,
+      "reports_to": null
+    },
+    {
+      "name": "CTO",
+      "title": "Chief Technology Officer",
+      "role": "manager",
+      "capabilities": "Architecture decisions, tech stack selection, engineering roadmap, code review",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 5000,
+      "reports_to": "CEO"
+    },
+    {
+      "name": "Engineer",
+      "title": "Full-Stack Engineer",
+      "role": "worker",
+      "capabilities": "Full-stack development, TypeScript, React, Node.js, PostgreSQL, DevOps",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 5000,
+      "reports_to": "CTO"
+    }
+  ],
+  "goals": [
+    {
+      "title": "Achieve product-market fit",
+      "description": "Build and iterate on the core product to find product-market fit as fast as possible.",
+      "level": "strategic",
+      "owner_agent_name": "CEO"
+    },
+    {
+      "title": "Ship MVP in 30 days",
+      "description": "Deliver a minimum viable product with core features within one month.",
+      "level": "initiative",
+      "owner_agent_name": "CTO"
+    }
+  ],
+  "policies": [
+    {
+      "name": "Allow all tools",
+      "tool_pattern": "*",
+      "action": "allow",
+      "priority": 0
+    },
+    {
+      "name": "Deny destructive ops without CTO",
+      "tool_pattern": "deploy:production",
+      "action": "log",
+      "priority": 10
+    }
+  ]
+}

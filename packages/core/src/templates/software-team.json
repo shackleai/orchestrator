@@ -1,0 +1,75 @@
+{
+  "name": "Software Team",
+  "description": "A standard software development team with PM, frontend, backend, and QA agents.",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "name": "Product Manager",
+      "title": "Product Manager",
+      "role": "manager",
+      "capabilities": "Requirements gathering, backlog prioritization, sprint planning, stakeholder communication",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 5000,
+      "reports_to": null
+    },
+    {
+      "name": "Frontend Engineer",
+      "title": "Frontend Engineer",
+      "role": "worker",
+      "capabilities": "React, TypeScript, CSS, UI components, accessibility, responsive design",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 5000,
+      "reports_to": "Product Manager"
+    },
+    {
+      "name": "Backend Engineer",
+      "title": "Backend Engineer",
+      "role": "worker",
+      "capabilities": "Node.js, TypeScript, PostgreSQL, REST APIs, system design, performance optimization",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 5000,
+      "reports_to": "Product Manager"
+    },
+    {
+      "name": "QA Engineer",
+      "title": "QA Engineer",
+      "role": "worker",
+      "capabilities": "Test planning, automated testing, regression testing, bug triage, quality metrics",
+      "adapter_type": "claude",
+      "adapter_config": {},
+      "budget_monthly_cents": 3000,
+      "reports_to": "Product Manager"
+    }
+  ],
+  "goals": [
+    {
+      "title": "Deliver high-quality software on schedule",
+      "description": "Ensure the team ships features that meet requirements with minimal defects.",
+      "level": "strategic",
+      "owner_agent_name": "Product Manager"
+    },
+    {
+      "title": "Maintain code quality standards",
+      "description": "Keep test coverage high and technical debt manageable.",
+      "level": "initiative",
+      "owner_agent_name": "QA Engineer"
+    }
+  ],
+  "policies": [
+    {
+      "name": "Allow all tools for engineers",
+      "tool_pattern": "*",
+      "action": "allow",
+      "priority": 0
+    },
+    {
+      "name": "Log deployments",
+      "tool_pattern": "deploy:*",
+      "action": "log",
+      "priority": 10
+    }
+  ]
+}

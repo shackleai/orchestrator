@@ -5,6 +5,7 @@
 import type { Command } from 'commander'
 import * as p from '@clack/prompts'
 import type { Company } from '@shackleai/shared'
+import type { TemplateImportResult } from '@shackleai/core'
 import { apiClient, getCompanyId } from '../api-client.js'
 import { readConfig, writeConfig } from '../config.js'
 
@@ -125,6 +126,97 @@ async function createCompanyInteractive(): Promise<void> {
   }
 }
 
+async function createCompanyFromTemplate(templateSlug: string): Promise<void> {
+  p.intro(`Create company from template: ${templateSlug}`)
+
+  const name = await p.text({
+    message: 'Company name',
+    placeholder: 'Acme Corp',
+    validate: (v) => {
+      if (!v.trim()) return 'Company name is required'
+      return undefined
+    },
+  })
+
+  if (p.isCancel(name)) {
+    p.cancel('Cancelled.')
+    return
+  }
+
+  const mission = await p.text({
+    message: 'Issue prefix',
+    placeholder: 'ACME',
+    validate: (v) => {
+      if (!v.trim()) return 'Issue prefix is required'
+      return undefined
+    },
+  })
+
+  if (p.isCancel(mission)) {
+    p.cancel('Cancelled.')
+    return
+  }
+
+  const spin = p.spinner()
+  spin.start('Creating company...')
+
+  const createRes = await apiClient('/api/companies', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: name.trim(),
+      issue_prefix: mission.trim().toUpperCase(),
+    }),
+  })
+
+  if (!createRes.ok) {
+    spin.stop('Failed to create company')
+    const body = (await createRes.json()) as ApiResponse<never>
+    console.error(`Error: ${body.error ?? createRes.statusText}`)
+    process.exit(1)
+  }
+
+  const companyBody = (await createRes.json()) as ApiResponse<Company>
+  const company = companyBody.data
+
+  spin.message('Importing template...')
+
+  const importRes = await apiClient(
+    `/api/companies/${company.id}/import-template`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ slug: templateSlug }),
+    },
+  )
+
+  if (!importRes.ok) {
+    spin.stop('Failed to import template')
+    const body = (await importRes.json()) as ApiResponse<never>
+    console.error(`Error: ${body.error ?? importRes.statusText}`)
+    console.error(
+      `Company "${company.name}" was created but template was not applied.`,
+    )
+    process.exit(1)
+  }
+
+  const importBody = (await importRes.json()) as ApiResponse<TemplateImportResult>
+  const result = importBody.data
+
+  spin.stop(
+    `Company created: ${company.name} (${company.id})\n` +
+      `  Agents: ${result.agents_created}, Goals: ${result.goals_created}, Policies: ${result.policies_created}`,
+  )
+
+  const shouldSwitch = await p.confirm({
+    message: 'Switch to this company now?',
+  })
+
+  if (p.isCancel(shouldSwitch)) return
+
+  if (shouldSwitch) {
+    await switchToCompany(company)
+  }
+}
+
 async function switchToCompany(company: Company): Promise<void> {
   const config = await readConfig()
   if (!config) {
@@ -209,8 +301,16 @@ export function registerCompanyCommand(program: Command): void {
   company
     .command('create')
     .description('Create a new company (interactive)')
-    .action(async () => {
-      await createCompanyInteractive()
+    .option(
+      '--template <slug>',
+      'Create from a built-in template (e.g. software-team, startup)',
+    )
+    .action(async (opts: { template?: string }) => {
+      if (opts.template) {
+        await createCompanyFromTemplate(opts.template)
+      } else {
+        await createCompanyInteractive()
+      }
     })
 
   company

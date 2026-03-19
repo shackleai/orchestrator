@@ -322,3 +322,61 @@ export interface IssueLabel {
   label_id: string
   created_at: Date
 }
+
+// ---------------------------------------------------------------------------
+// Company Templates
+// ---------------------------------------------------------------------------
+
+/** An agent definition within a template — no IDs, just configuration. */
+export interface TemplateAgent {
+  name: string
+  title?: string | null
+  role: string
+  capabilities?: string | null
+  adapter_type: string
+  adapter_config?: Record<string, unknown>
+  budget_monthly_cents?: number
+  /** Name of the agent this one reports to (resolved at import time). */
+  reports_to?: string | null
+}
+
+/** A goal definition within a template. */
+export interface TemplateGoal {
+  title: string
+  description?: string | null
+  level: string
+  /** Name of the owning agent (resolved at import time). */
+  owner_agent_name?: string | null
+}
+
+/** A policy definition within a template. */
+export interface TemplatePolicy {
+  name: string
+  tool_pattern: string
+  action: string
+  priority?: number
+  max_calls_per_hour?: number | null
+  /** Name of the agent this policy applies to (resolved at import time). null = company-wide. */
+  agent_name?: string | null
+}
+
+/** A full company template — portable, ID-free description of an org structure. */
+export interface CompanyTemplate {
+  name: string
+  description: string
+  version: string
+  agents: TemplateAgent[]
+  goals?: TemplateGoal[]
+  policies?: TemplatePolicy[]
+}
+
+/** Metadata returned when listing templates (no full content). */
+export interface TemplateSummary {
+  slug: string
+  name: string
+  description: string
+  version: string
+  agent_count: number
+  goal_count: number
+  policy_count: number
+}

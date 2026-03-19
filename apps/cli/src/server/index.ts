@@ -27,6 +27,7 @@ import { approvalsRouter } from './routes/approvals.js'
 import { secretsRouter } from './routes/secrets.js'
 import { quotasRouter } from './routes/quotas.js'
 import { labelsRouter } from './routes/labels.js'
+import { templatesRouter, companyTemplatesRouter } from './routes/templates.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
@@ -77,7 +78,9 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
     })
   }
 
+  app.route('/api/templates', templatesRouter())
   app.route('/api/companies', companiesRouter(db))
+  app.route('/api/companies', companyTemplatesRouter(db))
   app.route('/api/companies', dashboardRouter(db))
   app.route('/api/companies', agentsRouter(db, options?.scheduler))
   app.route('/api/companies', issuesRouter(db, options?.scheduler))
