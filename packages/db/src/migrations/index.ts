@@ -34,6 +34,7 @@ import * as m032 from './032_workspace_policy_rules.js'
 import * as m033 from './033_users.js'
 import * as m034 from './034_plugins.js'
 import * as m035 from './035_board_claim.js'
+import * as m036 from './036_memberships.js'
 
 export interface Migration {
   name: string
@@ -76,6 +77,7 @@ const migrations: Migration[] = [
   m033,
   m034,
   m035,
+  m036,
 ]
 
 /**
