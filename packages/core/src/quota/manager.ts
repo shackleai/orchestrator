@@ -2,8 +2,7 @@
  * QuotaManager -- time-windowed provider-level quota enforcement.
  *
  * Enforces per-provider, per-agent (or company-wide) request and token limits
- * using a sliding window over cost_events. Replaces the dead in-memory
- * RateLimiter with database-backed enforcement.
+ * using a sliding window over cost_events with database-backed enforcement.
  */
 
 import type { DatabaseProvider } from '@shackleai/db'
