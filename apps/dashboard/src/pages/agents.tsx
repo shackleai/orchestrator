@@ -518,6 +518,8 @@ export function AgentsPage() {
   const [adapterFilter, setAdapterFilter] = useState('')
   const [page, setPage] = useState(0)
 
+  const debouncedSearch = useDebounce(search, 300)
+
   const { data: rawAgents, isLoading, error } = useQuery<Agent[]>({
     queryKey: ['agents', companyId, page],
     queryFn: () =>
@@ -535,7 +537,13 @@ export function AgentsPage() {
   const STATUS_OPTIONS = ['idle', 'active', 'paused', 'terminated'] as const
 
   const filteredAgents = (agents ?? []).filter((a) => {
-    if (search && !a.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (debouncedSearch) {
+      const query = debouncedSearch.toLowerCase()
+      const matchesName = a.name.toLowerCase().includes(query)
+      const matchesRole = a.role.toLowerCase().includes(query)
+      const matchesTitle = a.title?.toLowerCase().includes(query) ?? false
+      if (!matchesName && !matchesRole && !matchesTitle) return false
+    }
     if (statusFilter && a.status !== statusFilter) return false
     if (adapterFilter && a.adapter_type !== adapterFilter) return false
     return true
@@ -543,6 +551,12 @@ export function AgentsPage() {
 
   const hasActiveFilters = search !== '' || statusFilter !== '' || adapterFilter !== ''
   const pageCount = agents?.length ?? 0
+
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('')
+    setAdapterFilter('')
+  }
 
   if (isLoading) return <AgentsSkeleton />
   if (error) {
@@ -557,17 +571,10 @@ export function AgentsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Agents</h2>
-        <div className="flex items-center gap-2">
-          {pageCount > 0 && hasActiveFilters && (
-            <span className="text-sm text-muted-foreground">
-              Showing {filteredAgents.length} of {pageCount} on this page
-            </span>
-          )}
-          <Button size="sm" onClick={() => setShowCreate(true)} disabled={!companyId}>
-            <Plus className="h-4 w-4" />
-            Hire Agent
-          </Button>
-        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)} disabled={!companyId}>
+          <Plus className="h-4 w-4" />
+          Hire Agent
+        </Button>
       </div>
 
       {showCreate && companyId && (
@@ -582,11 +589,11 @@ export function AgentsPage() {
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search agents by name..."
+              placeholder="Search by name, role, or title..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
-              aria-label="Search agents by name"
+              aria-label="Search agents by name, role, or title"
             />
           </div>
           <div className="flex gap-2">
@@ -607,7 +614,7 @@ export function AgentsPage() {
               value={adapterFilter}
               onChange={(e) => setAdapterFilter(e.target.value)}
               className="w-full sm:w-[150px]"
-              aria-label="Filter by adapter"
+              aria-label="Filter by adapter type"
             >
               <option value="">All Adapters</option>
               {ADAPTER_TYPES.map((a) => (
@@ -616,8 +623,26 @@ export function AgentsPage() {
                 </option>
               ))}
             </Select>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="shrink-0"
+                aria-label="Clear all filters"
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            )}
           </div>
         </div>
+      )}
+
+      {pageCount > 0 && hasActiveFilters && (
+        <p className="text-sm text-muted-foreground">
+          Showing {filteredAgents.length} of {pageCount} agents
+        </p>
       )}
 
       {pageCount === 0 && page === 0 ? (
