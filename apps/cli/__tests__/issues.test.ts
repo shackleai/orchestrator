@@ -630,3 +630,110 @@ describe('issues routes — filtering', () => {
     expect(body.data.every((i) => i.assignee_agent_id === filtAgentId)).toBe(true)
   })
 })
+
+describe('issues routes — lifecycle guards (parent/child)', () => {
+  let db: PGliteProvider
+  let app: ReturnType<typeof createApp>
+  let companyId: string
+
+  beforeAll(async () => {
+    db = new PGliteProvider()
+    await runMigrations(db)
+    app = createApp(db, { skipAuth: true })
+    const company = await createCompany(app, 'GUARD')
+    companyId = company.id
+  })
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  it('rejects completing a parent issue when children are incomplete', async () => {
+    const parent = await createIssue(app, companyId, { title: 'Parent Task', status: 'in_progress' })
+    await createIssue(app, companyId, { title: 'Child A', parent_id: parent.id, status: 'in_progress' })
+    await createIssue(app, companyId, { title: 'Child B', parent_id: parent.id, status: 'backlog' })
+
+    const res = await app.request(`/api/companies/${companyId}/issues/${parent.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; incomplete_children: unknown[]; message: string }
+    expect(body.error).toBe('Cannot complete parent issue while children are incomplete')
+    expect(body.incomplete_children).toHaveLength(2)
+    expect(body.message).toContain('Child A')
+    expect(body.message).toContain('Child B')
+  })
+
+  it('rejects cancelling a parent issue when children are incomplete', async () => {
+    const parent = await createIssue(app, companyId, { title: 'Cancel Parent', status: 'in_progress' })
+    await createIssue(app, companyId, { title: 'Active Child', parent_id: parent.id, status: 'todo' })
+
+    const res = await app.request(`/api/companies/${companyId}/issues/${parent.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelled' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Cannot complete parent issue while children are incomplete')
+  })
+
+  it('allows completing a parent when all children are done', async () => {
+    const parent = await createIssue(app, companyId, { title: 'Good Parent', status: 'in_progress' })
+    await createIssue(app, companyId, { title: 'Done Child 1', parent_id: parent.id, status: 'done' })
+    await createIssue(app, companyId, { title: 'Done Child 2', parent_id: parent.id, status: 'done' })
+
+    const res = await app.request(`/api/companies/${companyId}/issues/${parent.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: IssueRow }
+    expect(body.data.status).toBe('done')
+  })
+
+  it('allows completing a parent when all children are done or cancelled', async () => {
+    const parent = await createIssue(app, companyId, { title: 'Mixed Parent', status: 'in_progress' })
+    await createIssue(app, companyId, { title: 'Done Child', parent_id: parent.id, status: 'done' })
+    await createIssue(app, companyId, { title: 'Cancelled Child', parent_id: parent.id, status: 'cancelled' })
+
+    const res = await app.request(`/api/companies/${companyId}/issues/${parent.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: IssueRow }
+    expect(body.data.status).toBe('done')
+  })
+
+  it('allows completing an issue with no children (leaf task)', async () => {
+    const leaf = await createIssue(app, companyId, { title: 'Leaf Task', status: 'in_progress' })
+
+    const res = await app.request(`/api/companies/${companyId}/issues/${leaf.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: IssueRow }
+    expect(body.data.status).toBe('done')
+  })
+
+  it('allows non-terminal status changes on parent with incomplete children', async () => {
+    const parent = await createIssue(app, companyId, { title: 'Status Change Parent', status: 'backlog' })
+    await createIssue(app, companyId, { title: 'WIP Child', parent_id: parent.id, status: 'in_progress' })
+
+    const res = await app.request(`/api/companies/${companyId}/issues/${parent.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'in_progress' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: IssueRow }
+    expect(body.data.status).toBe('in_progress')
+  })
+})
