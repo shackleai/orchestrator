@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, createContext, useContext } from 'react'
+import { X } from 'lucide-react'
 
 interface Toast {
   id: number
@@ -20,10 +21,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const counterRef = useRef(0)
 
+  const dismiss = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
+
   const toast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = ++counterRef.current
     setToasts(prev => [...prev, { id, message, type }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000)
   }, [])
 
   return (
@@ -35,7 +40,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={t.id}
             role="status"
             aria-live="polite"
-            className={`pointer-events-auto rounded-lg px-4 py-3 text-sm shadow-lg animate-toast-in ${
+            className={`pointer-events-auto flex items-center gap-2 rounded-lg pl-4 pr-2 py-3 text-sm shadow-lg animate-toast-in ${
               t.type === 'success'
                 ? 'bg-emerald-600 text-white'
                 : t.type === 'error'
@@ -43,7 +48,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   : 'bg-zinc-800 text-zinc-100 border border-zinc-700'
             }`}
           >
-            {t.message}
+            <span className="flex-1">{t.message}</span>
+            <button
+              type="button"
+              onClick={() => dismiss(t.id)}
+              className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 transition-opacity"
+              aria-label="Dismiss notification"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         ))}
       </div>
