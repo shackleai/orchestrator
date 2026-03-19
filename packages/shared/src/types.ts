@@ -350,6 +350,21 @@ export interface IssueWorkProduct {
   created_at: Date
 }
 
+
+export interface IssueReadState {
+  issue_id: string
+  user_or_agent_id: string
+  last_read_at: Date
+}
+
+export interface InboxItem {
+  type: 'unread_issue' | 'pending_approval' | 'new_comment'
+  id: string
+  title: string
+  timestamp: string
+  meta?: Record<string, unknown>
+}
+
 // ---------------------------------------------------------------------------
 // Documents
 // ---------------------------------------------------------------------------

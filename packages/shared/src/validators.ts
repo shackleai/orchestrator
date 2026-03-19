@@ -434,6 +434,15 @@ export const LinkDocumentInput = z.object({
 export type LinkDocumentInput = z.infer<typeof LinkDocumentInput>
 
 // ---------------------------------------------------------------------------
+// Issue Read State
+// ---------------------------------------------------------------------------
+
+export const MarkReadInput = z.object({
+  user_or_agent_id: uuid,
+})
+export type MarkReadInput = z.infer<typeof MarkReadInput>
+
+// ---------------------------------------------------------------------------
 // Company Template
 // ---------------------------------------------------------------------------
 

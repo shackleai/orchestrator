@@ -28,6 +28,7 @@ import { secretsRouter } from './routes/secrets.js'
 import { quotasRouter } from './routes/quotas.js'
 import { labelsRouter } from './routes/labels.js'
 import { documentsRouter } from './routes/documents.js'
+import { inboxRouter } from './routes/inbox.js'
 import { templatesRouter, companyTemplatesRouter } from './routes/templates.js'
 import { attachmentsRouter } from './routes/attachments.js'
 import { workProductsRouter } from './routes/work-products.js'
@@ -102,6 +103,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', secretsRouter(db))
   app.route('/api/companies', quotasRouter(db))
   app.route('/api/companies', labelsRouter(db))
+  app.route('/api/companies', inboxRouter(db))
   if (options?.storage) {
     app.route('/api/companies', attachmentsRouter(db, options.storage))
   }

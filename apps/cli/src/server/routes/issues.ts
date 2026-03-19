@@ -176,6 +176,22 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     // Strip joined columns from the issue response
     const { goal_name: _goal_name, goal_description: _goal_description, project_name: _project_name, project_description: _project_description, company_mission: _company_mission, ...issue } = row
 
+    // Auto-mark as read when reader_id query param is provided
+    const readerId = c.req.query('reader_id')
+    if (readerId) {
+      void db
+        .query(
+          `INSERT INTO issue_read_states (issue_id, user_or_agent_id, last_read_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (issue_id, user_or_agent_id)
+           DO UPDATE SET last_read_at = NOW()`,
+          [issueId, readerId],
+        )
+        .catch(() => {
+          // Non-blocking
+        })
+    }
+
     return c.json({ data: { ...issue, ancestry } })
   })
 
