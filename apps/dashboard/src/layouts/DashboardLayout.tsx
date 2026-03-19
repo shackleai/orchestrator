@@ -22,6 +22,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { LiveIndicator } from '@/components/LiveIndicator'
 import { CommandPalette } from '@/components/CommandPalette'
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp'
+import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { useRecentPages } from '@/hooks/useRecentPages'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useInboxCounts } from '@/hooks/useInboxCounts'
@@ -224,12 +225,15 @@ export function DashboardLayout() {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        {/* Page content — extra bottom padding on mobile for bottom nav */}
+        <main className="flex-1 overflow-y-auto p-4 pb-20 lg:p-6 lg:pb-6">
           <UpgradeBanner />
           <Outlet />
         </main>
       </div>
+
+      {/* Mobile bottom navigation */}
+      <MobileBottomNav />
     </div>
   )
 }
