@@ -39,6 +39,8 @@ import { financeRouter } from './routes/finance.js'
 import { llmConfigsRouter } from './routes/llm-configs.js'
 import { pluginsRouter } from './routes/plugins.js'
 import { authRouter } from './routes/auth.js'
+import { boardRouter } from './routes/board.js'
+import { membershipsRouter, invitesPublicRouter } from './routes/memberships.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
@@ -83,11 +85,18 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   // --- Auth routes — unauthenticated (register, login) ---
   app.route('/api/auth', authRouter(db))
 
-  // --- Global API authentication — protects all /api/* routes except /api/health and /api/auth ---
+  // --- Public invite routes — GET invite details, POST accept (JWT-authed internally) ---
+  app.route('/api/invites', invitesPublicRouter(db))
+
+  // --- Global API authentication — protects all /api/* routes except /api/health, /api/auth, /api/invites ---
   if (!options?.skipAuth) {
     const apiAuthMiddleware = createApiAuth(db)
     app.use('/api/*', async (c, next) => {
-      if (c.req.path === '/api/health' || c.req.path.startsWith('/api/auth')) {
+      if (
+        c.req.path === '/api/health' ||
+        c.req.path.startsWith('/api/auth') ||
+        c.req.path.startsWith('/api/invites')
+      ) {
         return next()
       }
       return apiAuthMiddleware(c, next)
@@ -126,6 +135,8 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', financeRouter(db))
   app.route('/api/companies', llmConfigsRouter(db))
   app.route('/api/companies', pluginsRouter(db))
+  app.route('/api/companies', boardRouter(db))
+  app.route('/api/companies', membershipsRouter(db))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)

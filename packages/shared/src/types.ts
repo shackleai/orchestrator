@@ -14,8 +14,18 @@ export interface Company {
   default_honesty_checklist: string[] | null
   require_approval: boolean
   logo_asset_id: string | null
+  board_claimed_by: string | null
+  board_claimed_at: Date | null
   created_at: Date
   updated_at: Date
+}
+
+export interface BoardStatus {
+  claimed: boolean
+  claimed_by: string | null
+  claimed_at: string | null
+  user_name: string | null
+  user_email: string | null
 }
 
 export interface Agent {
@@ -747,3 +757,37 @@ export interface CostEventPayload {
   outputTokens: number
 }
 
+
+// ---------------------------------------------------------------------------
+// Company Memberships, Invites & Join Requests
+// ---------------------------------------------------------------------------
+
+export interface CompanyMembership {
+  id: string
+  company_id: string
+  user_id: string
+  role: string
+  joined_at: Date
+}
+
+export interface CompanyInvite {
+  id: string
+  company_id: string
+  email: string
+  role: string
+  token: string
+  invited_by: string
+  expires_at: Date
+  accepted_at: Date | null
+  created_at: Date
+}
+
+export interface JoinRequest {
+  id: string
+  company_id: string
+  user_id: string
+  message: string | null
+  status: string
+  decided_by: string | null
+  created_at: Date
+}

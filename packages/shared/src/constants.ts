@@ -238,6 +238,20 @@ export const UserRole = {
 export type UserRole = (typeof UserRole)[keyof typeof UserRole]
 
 // ---------------------------------------------------------------------------
+// Board Claim — mutation types that require board authority
+// ---------------------------------------------------------------------------
+
+export const BoardGuardedMutation = {
+  AgentCreate: 'agent.create',
+  AgentDelete: 'agent.delete',
+  BudgetChange: 'budget.change',
+  PolicyChange: 'policy.change',
+  CompanySettings: 'company.settings',
+} as const
+export type BoardGuardedMutation =
+  (typeof BoardGuardedMutation)[keyof typeof BoardGuardedMutation]
+
+// ---------------------------------------------------------------------------
 // LLM Provider
 // ---------------------------------------------------------------------------
 
