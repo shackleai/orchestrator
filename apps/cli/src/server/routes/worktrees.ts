@@ -1,11 +1,11 @@
 /**
  * Worktree CRUD routes — /api/companies/:id/agents/:agentId/worktrees
- * and /api/companies/:id/worktrees/cleanup
+ * and /api/companies/:id/worktrees, /api/companies/:id/worktrees/cleanup
  */
 
 import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { Agent } from '@shackleai/shared'
+import type { Agent, AgentWorktree } from '@shackleai/shared'
 import {
   CreateWorktreeInput,
   WorktreeCleanupInput,
@@ -161,6 +161,24 @@ export function worktreesRouter(
       }
     },
   )
+
+  // GET /api/companies/:id/worktrees — list ALL worktrees for the company (single query)
+  app.get('/:id/worktrees', companyScope, async (c) => {
+    const companyId = c.req.param('id') as string
+    const { limit, offset } = parsePagination(c)
+
+    const result = await db.query<AgentWorktree & { agent_name: string }>(
+      `SELECT w.*, a.name AS agent_name
+       FROM agent_worktrees w
+       LEFT JOIN agents a ON a.id = w.agent_id
+       WHERE w.company_id = $1
+       ORDER BY w.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [companyId, limit, offset],
+    )
+
+    return c.json({ data: result.rows })
+  })
 
   // POST /api/companies/:id/worktrees/cleanup — trigger cleanup
   app.post('/:id/worktrees/cleanup', companyScope, async (c) => {
