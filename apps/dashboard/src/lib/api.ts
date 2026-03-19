@@ -412,3 +412,23 @@ export function createComment(companyId: string, issueId: string, body: string) 
 export function updateIssue(companyId: string, issueId: string, data: Partial<Issue>) {
   return patchJson<Issue>(`${BASE_URL}/companies/${companyId}/issues/${issueId}`, data)
 }
+
+// --- Labels ---
+
+export interface Label {
+  id: string
+  company_id: string
+  name: string
+  color: string
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function fetchIssueLabels(companyId: string, issueId: string) {
+  return fetchJson<Label[]>(`${BASE_URL}/companies/${companyId}/issues/${issueId}/labels`)
+}
+
+export function fetchLabels(companyId: string) {
+  return fetchJson<Label[]>(`${BASE_URL}/companies/${companyId}/labels`)
+}
