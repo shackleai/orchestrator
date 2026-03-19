@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
+import { useAutosave } from '@/hooks/useAutosave'
+import { AutosaveIndicator } from '@/components/ui/autosave-indicator'
 import {
   ArrowLeft,
   Bot,
@@ -516,23 +518,37 @@ function EditableTitle({
   isPending,
 }: {
   value: string
-  onSave: (title: string) => void
+  onSave: (title: string) => Promise<unknown>
   isPending: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
-  const handleSave = () => {
-    if (draft.trim() && draft.trim() !== value) {
-      onSave(draft.trim())
-    }
+  const handleAutosave = useCallback(
+    async (val: string) => {
+      const trimmed = val.trim()
+      if (trimmed && trimmed !== value) {
+        await onSave(trimmed)
+      }
+    },
+    [onSave, value],
+  )
+
+  const { status } = useAutosave({
+    value: draft,
+    savedValue: value,
+    onSave: handleAutosave,
+    enabled: editing,
+  })
+
+  const handleDone = () => {
     setEditing(false)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      handleSave()
+      handleDone()
     }
     if (e.key === 'Escape') {
       setDraft(value)
@@ -542,15 +558,18 @@ function EditableTitle({
 
   if (editing) {
     return (
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={handleSave}
-        onKeyDown={handleKeyDown}
-        disabled={isPending}
-        className="text-lg font-semibold"
-        autoFocus
-      />
+      <div className="space-y-1">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleDone}
+          onKeyDown={handleKeyDown}
+          disabled={isPending}
+          className="text-lg font-semibold"
+          autoFocus
+        />
+        <AutosaveIndicator status={status} />
+      </div>
     )
   }
 
@@ -574,16 +593,29 @@ function EditableDescription({
   isPending,
 }: {
   value: string | null
-  onSave: (description: string) => void
+  onSave: (description: string) => Promise<unknown>
   isPending: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
 
-  const handleSave = () => {
-    if (draft !== (value ?? '')) {
-      onSave(draft)
-    }
+  const handleAutosave = useCallback(
+    async (val: string) => {
+      if (val !== (value ?? '')) {
+        await onSave(val)
+      }
+    },
+    [onSave, value],
+  )
+
+  const { status } = useAutosave({
+    value: draft,
+    savedValue: value ?? '',
+    onSave: handleAutosave,
+    enabled: editing,
+  })
+
+  const handleDone = () => {
     setEditing(false)
   }
 
@@ -598,9 +630,9 @@ function EditableDescription({
           className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
           autoFocus
         />
-        <div className="flex gap-2">
-          <Button size="sm" onClick={handleSave} disabled={isPending}>
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={handleDone}>
+            Done
           </Button>
           <Button
             size="sm"
@@ -612,6 +644,7 @@ function EditableDescription({
           >
             Cancel
           </Button>
+          <AutosaveIndicator status={status} className="ml-auto" />
         </div>
       </div>
     )
@@ -908,7 +941,7 @@ export function TaskDetailPage() {
           </div>
           <EditableTitle
             value={task.title}
-            onSave={(title) => updateMutation.mutate({ title })}
+            onSave={(title) => updateMutation.mutateAsync({ title })}
             isPending={updateMutation.isPending}
           />
         </div>
@@ -942,7 +975,7 @@ export function TaskDetailPage() {
             <CardContent>
               <EditableDescription
                 value={task.description}
-                onSave={(description) => updateMutation.mutate({ description })}
+                onSave={(description) => updateMutation.mutateAsync({ description })}
                 isPending={updateMutation.isPending}
               />
             </CardContent>
