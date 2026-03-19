@@ -31,7 +31,7 @@ describe('company CLI command — API integration', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
   })
 
   afterAll(async () => {

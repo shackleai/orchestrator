@@ -70,7 +70,7 @@ describe('event triggers — task assignment', () => {
     db = new PGliteProvider()
     await runMigrations(db)
     mockScheduler = createMockScheduler()
-    app = createApp(db, { scheduler: mockScheduler })
+    app = createApp(db, { skipAuth: true, scheduler: mockScheduler })
     const company = await createCompany(app, 'TRIG')
     companyId = company.id
     const agent = await createAgent(db, companyId, 'worker-alpha')
@@ -192,7 +192,7 @@ describe('event triggers — comment mentions', () => {
     db = new PGliteProvider()
     await runMigrations(db)
     mockScheduler = createMockScheduler()
-    app = createApp(db, { scheduler: mockScheduler })
+    app = createApp(db, { skipAuth: true, scheduler: mockScheduler })
     const company = await createCompany(app, 'MENT')
     companyId = company.id
     const agent = await createAgent(db, companyId, 'review-bot')
@@ -280,7 +280,7 @@ describe('event triggers — no scheduler available', () => {
     db = new PGliteProvider()
     await runMigrations(db)
     // No scheduler passed — should gracefully skip triggers
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'NOSC')
     companyId = company.id
     const agent = await createAgent(db, companyId, 'silent-agent')

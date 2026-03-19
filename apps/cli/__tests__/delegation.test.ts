@@ -80,7 +80,7 @@ describe('delegation — hierarchy validation', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'DEL')
     companyId = company.id
 
@@ -294,7 +294,7 @@ describe('delegation — status roll-up', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'ROLL')
     companyId = company.id
 

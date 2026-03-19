@@ -52,7 +52,7 @@ describe('activity routes', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
     companyId = await createCompany(app)
   })
 

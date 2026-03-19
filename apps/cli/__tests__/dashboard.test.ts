@@ -11,7 +11,7 @@ describe('dashboard routes — metrics aggregation', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
 
     // Create a test company
     const res = await db.query<{ id: string }>(

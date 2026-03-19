@@ -9,7 +9,7 @@ describe('companies routes — CRUD', () => {
   beforeAll(async () => {
     db = new PGliteProvider()
     await runMigrations(db)
-    app = createApp(db)
+    app = createApp(db, { skipAuth: true })
   })
 
   afterAll(async () => {

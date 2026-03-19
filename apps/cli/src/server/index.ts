@@ -23,19 +23,34 @@ import { worktreesRouter } from './routes/worktrees.js'
 import { toolCallsRouter } from './routes/tool-calls.js'
 import { commentsRouter } from './routes/comments.js'
 import { approvalsRouter } from './routes/approvals.js'
+import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
 
 export interface CreateAppOptions {
   scheduler?: Scheduler
+  /** Skip API authentication — for testing only. NEVER set in production. */
+  skipAuth?: boolean
 }
 
 export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hono {
   const app = new Hono()
 
+  // --- Health check — unauthenticated ---
   app.get('/api/health', (c) => {
     return c.json({ status: 'ok', version: VERSION })
   })
+
+  // --- Global API authentication — protects all /api/* routes except /api/health ---
+  if (!options?.skipAuth) {
+    const apiAuthMiddleware = createApiAuth(db)
+    app.use('/api/*', async (c, next) => {
+      if (c.req.path === '/api/health') {
+        return next()
+      }
+      return apiAuthMiddleware(c, next)
+    })
+  }
 
   app.route('/api/companies', companiesRouter(db))
   app.route('/api/companies', dashboardRouter(db))
