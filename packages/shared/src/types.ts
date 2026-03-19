@@ -323,6 +323,33 @@ export interface IssueLabel {
   created_at: Date
 }
 
+
+// ---------------------------------------------------------------------------
+// Issue Attachments & Work Products
+// ---------------------------------------------------------------------------
+
+export interface IssueAttachment {
+  id: string
+  issue_id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  storage_key: string
+  uploaded_by_agent_id: string | null
+  created_at: Date
+}
+
+export interface IssueWorkProduct {
+  id: string
+  issue_id: string
+  title: string
+  description: string | null
+  type: string
+  url: string
+  agent_id: string | null
+  created_at: Date
+}
+
 // ---------------------------------------------------------------------------
 // Company Templates
 // ---------------------------------------------------------------------------

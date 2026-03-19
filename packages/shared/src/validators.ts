@@ -17,6 +17,7 @@ import {
   GoalStatus,
   ProjectStatus,
   AgentApiKeyStatus,
+  WorkProductType,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -496,3 +497,23 @@ export const CompanyExportInput = z.object({
   issues: z.array(exportIssueSchema).optional().default([]),
 })
 export type CompanyExportInput = z.infer<typeof CompanyExportInput>
+
+
+// ---------------------------------------------------------------------------
+// Work Products
+// ---------------------------------------------------------------------------
+
+const workProductTypeValues = Object.values(WorkProductType) as [
+  string,
+  ...string[],
+]
+
+export const CreateWorkProductInput = z.object({
+  issue_id: z.string().uuid().optional(),
+  title: z.string().min(1),
+  description: z.string().nullable().optional(),
+  type: z.enum(workProductTypeValues),
+  url: z.string().min(1),
+  agent_id: z.string().uuid().nullable().optional(),
+})
+export type CreateWorkProductInput = z.infer<typeof CreateWorkProductInput>
