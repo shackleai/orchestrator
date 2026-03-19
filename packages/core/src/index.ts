@@ -57,3 +57,7 @@ export { DelegationService, DelegationError, rollUpParentStatus } from './delega
 
 export { SecretsManager, LogRedactor } from './secrets/index.js'
 export type { SecretRow, SecretListItem } from './secrets/index.js'
+
+
+export { checkHonestyGate } from './honesty-gate.js'
+export type { HonestyGateResult } from './honesty-gate.js'

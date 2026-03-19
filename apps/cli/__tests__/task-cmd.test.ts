@@ -128,6 +128,69 @@ describe('task CLI command — API integration', () => {
   it('complete task via PATCH status=done', async () => {
     const task = await createTask(app, companyId, { title: 'Completable Task' })
 
+    // No honesty checklist configured — should complete directly
+    const res = await app.request(
+      `/api/companies/${companyId}/issues/${task.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      },
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: IssueRow }
+    expect(body.data.status).toBe('done')
+  })
+
+  it('honesty gate blocks completion when checklist is incomplete', async () => {
+    const task = await createTask(app, companyId, { title: 'Gated Task' })
+
+    // Set a checklist on the task with unchecked items
+    const checklistRes = await app.request(
+      `/api/companies/${companyId}/issues/${task.id}/checklist`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: [
+            { label: 'Code compiles', checked: false },
+            { label: 'Tests pass', checked: false },
+          ],
+        }),
+      },
+    )
+    expect(checklistRes.status).toBe(200)
+
+    // Attempt to complete — should be blocked
+    const blocked = await app.request(
+      `/api/companies/${companyId}/issues/${task.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      },
+    )
+    expect(blocked.status).toBe(400)
+    const blockedBody = (await blocked.json()) as { error: string; unchecked_items: string[] }
+    expect(blockedBody.error).toBe('Honesty gate check failed')
+    expect(blockedBody.unchecked_items).toHaveLength(2)
+
+    // Complete the checklist
+    await app.request(
+      `/api/companies/${companyId}/issues/${task.id}/checklist`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: [
+            { label: 'Code compiles', checked: true },
+            { label: 'Tests pass', checked: true },
+          ],
+        }),
+      },
+    )
+
+    // Now completing should succeed
     const res = await app.request(
       `/api/companies/${companyId}/issues/${task.id}`,
       {
