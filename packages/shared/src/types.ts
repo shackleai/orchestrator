@@ -13,6 +13,7 @@ export interface Company {
   spent_monthly_cents: number
   default_honesty_checklist: string[] | null
   require_approval: boolean
+  logo_asset_id: string | null
   created_at: Date
   updated_at: Date
 }

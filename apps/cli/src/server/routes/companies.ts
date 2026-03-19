@@ -13,6 +13,14 @@ import { readConfig, writeConfig } from '../../config.js'
 
 type Variables = CompanyScopeVariables
 
+/** Append a computed logo_url field to a company row. */
+function withLogoUrl(company: Company): Company & { logo_url: string | null } {
+  return {
+    ...company,
+    logo_url: company.logo_asset_id ? `/api/assets/${company.logo_asset_id}` : null,
+  }
+}
+
 export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>()
 
@@ -29,7 +37,7 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
       'SELECT * FROM companies ORDER BY created_at DESC LIMIT $1 OFFSET $2',
       [limit, offset],
     )
-    return c.json({ data: result.rows })
+    return c.json({ data: result.rows.map(withLogoUrl) })
   })
 
   // POST /api/companies — create company
@@ -55,13 +63,13 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
       [name, description ?? null, status, issue_prefix, budget_monthly_cents],
     )
 
-    return c.json({ data: result.rows[0] }, 201)
+    return c.json({ data: withLogoUrl(result.rows[0]) }, 201)
   })
 
   // GET /api/companies/:id — get by id
   app.get('/:id', companyScope, async (c) => {
     const company = c.get('company')
-    return c.json({ data: company })
+    return c.json({ data: withLogoUrl(company) })
   })
 
   // PATCH /api/companies/:id — update company
@@ -95,7 +103,7 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
       [id, ...values],
     )
 
-    return c.json({ data: result.rows[0] })
+    return c.json({ data: withLogoUrl(result.rows[0]) })
   })
 
   // GET /api/companies/:id/llm-keys — returns redacted LLM API keys

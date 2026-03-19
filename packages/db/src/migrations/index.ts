@@ -29,6 +29,7 @@ import * as m027 from './027_assets.js'
 import * as m028 from './028_finance_events.js'
 import * as m029 from './029_workspace_operations.js'
 import * as m030 from './030_llm_configs.js'
+import * as m031 from './031_company_logo.js'
 
 export interface Migration {
   name: string
@@ -66,6 +67,7 @@ const migrations: Migration[] = [
   m028,
   m029,
   m030,
+  m031,
 ]
 
 /**
