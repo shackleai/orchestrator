@@ -208,6 +208,45 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ data: result.rows[0] })
     }
 
+    // Lifecycle guard: block completing a parent issue while children are incomplete
+    const isTerminalStatus =
+      updates.status === IssueStatus.Done || updates.status === IssueStatus.Cancelled
+    if (isTerminalStatus) {
+      const childResult = await db.query<
+        Pick<Issue, 'id' | 'identifier' | 'title' | 'status'>
+      >(
+        `SELECT id, identifier, title, status FROM issues WHERE parent_id = $1`,
+        [issueId],
+      )
+      const incompleteChildren = childResult.rows.filter(
+        (child) =>
+          child.status !== IssueStatus.Done &&
+          child.status !== IssueStatus.Cancelled,
+      )
+      if (incompleteChildren.length > 0) {
+        const childList = incompleteChildren
+          .map(
+            (child) =>
+              `${child.identifier} "${child.title}" (${child.status})`,
+          )
+          .join(', ')
+        return c.json(
+          {
+            error:
+              'Cannot complete parent issue while children are incomplete',
+            incomplete_children: incompleteChildren.map((child) => ({
+              id: child.id,
+              identifier: child.identifier,
+              title: child.title,
+              status: child.status,
+            })),
+            message: `Incomplete children: ${childList}`,
+          },
+          400,
+        )
+      }
+    }
+
     const setClauses = fields.map((f, i) => `${f} = $${i + 3}`).join(', ')
     const values = fields.map((f) => updates[f])
 
