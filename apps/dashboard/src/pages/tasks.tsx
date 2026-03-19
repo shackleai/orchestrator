@@ -26,10 +26,10 @@ import {
   type CreateTaskPayload,
 } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
+import { usePagination } from '@/hooks/usePagination'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 
-const TASKS_PAGE_SIZE = 20
 
 const statusOptions = [
   { value: '', label: 'All statuses' },
@@ -234,16 +234,16 @@ export function TasksPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-  const [page, setPage] = useState(0)
+  const { page, perPage, offset, setPage, setPerPage, resetPage } = usePagination({ defaultPerPage: 25 })
 
   // Reset to page 0 when filters change
   const handleStatusChange = (value: string) => {
     setStatusFilter(value)
-    setPage(0)
+    resetPage()
   }
   const handlePriorityChange = (value: string) => {
     setPriorityFilter(value)
-    setPage(0)
+    resetPage()
   }
 
   const { data: agents } = useQuery<Agent[]>({
@@ -256,7 +256,7 @@ export function TasksPage() {
   const agentMap = new Map(agents?.map((a) => [a.id, a.name]) ?? [])
 
   const { data: rawTasks, isLoading, error } = useQuery<Issue[]>({
-    queryKey: ['tasks', companyId, statusFilter, priorityFilter, page],
+    queryKey: ['tasks', companyId, statusFilter, priorityFilter, page, perPage],
     queryFn: () =>
       fetchTasks(
         companyId!,
@@ -265,16 +265,16 @@ export function TasksPage() {
           priority: priorityFilter || undefined,
         },
         {
-          limit: TASKS_PAGE_SIZE + 1,
-          offset: page * TASKS_PAGE_SIZE,
+          limit: perPage + 1,
+          offset,
         },
       ),
     enabled: !!companyId,
     refetchInterval: tasksInterval,
   })
 
-  const hasMore = (rawTasks?.length ?? 0) > TASKS_PAGE_SIZE
-  const tasks = rawTasks ? rawTasks.slice(0, TASKS_PAGE_SIZE) : undefined
+  const hasMore = (rawTasks?.length ?? 0) > perPage
+  const tasks = rawTasks ? rawTasks.slice(0, perPage) : undefined
 
   return (
     <div className="space-y-4">
@@ -386,10 +386,11 @@ export function TasksPage() {
             </Table>
             <Pagination
               page={page}
-              pageSize={TASKS_PAGE_SIZE}
+              pageSize={perPage}
               total={-1}
               hasMore={hasMore}
               onPageChange={setPage}
+              onPageSizeChange={setPerPage}
             />
           </CardContent>
         </Card>

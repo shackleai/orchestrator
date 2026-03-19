@@ -29,10 +29,10 @@ import {
   type CreateAgentPayload,
 } from '@/lib/api'
 import { Pagination } from '@/components/ui/pagination'
+import { usePagination } from '@/hooks/usePagination'
 import { cn, formatCents, formatRelativeTime } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 
-const AGENTS_PAGE_SIZE = 20
 
 function cronToLabel(cron: string | undefined): string {
   if (!cron) return 'Manual'
@@ -518,23 +518,23 @@ export function AgentsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [adapterFilter, setAdapterFilter] = useState('')
-  const [page, setPage] = useState(0)
+  const { page, perPage, offset, setPage, setPerPage } = usePagination({ defaultPerPage: 25 })
 
   const debouncedSearch = useDebounce(search, 300)
 
   const { data: rawAgents, isLoading, error } = useQuery<Agent[]>({
-    queryKey: ['agents', companyId, page],
+    queryKey: ['agents', companyId, page, perPage],
     queryFn: () =>
       fetchAgents(companyId!, {
-        limit: AGENTS_PAGE_SIZE + 1,
-        offset: page * AGENTS_PAGE_SIZE,
+        limit: perPage + 1,
+        offset,
       }),
     enabled: !!companyId,
     refetchInterval: agentsInterval,
   })
 
-  const hasMore = (rawAgents?.length ?? 0) > AGENTS_PAGE_SIZE
-  const agents = rawAgents ? rawAgents.slice(0, AGENTS_PAGE_SIZE) : undefined
+  const hasMore = (rawAgents?.length ?? 0) > perPage
+  const agents = rawAgents ? rawAgents.slice(0, perPage) : undefined
 
   const STATUS_OPTIONS = ['idle', 'active', 'paused', 'terminated'] as const
 
@@ -724,10 +724,11 @@ export function AgentsPage() {
             </Table>
             <Pagination
               page={page}
-              pageSize={AGENTS_PAGE_SIZE}
+              pageSize={perPage}
               total={-1}
               hasMore={hasMore}
               onPageChange={setPage}
+              onPageSizeChange={setPerPage}
             />
           </CardContent>
         </Card>
