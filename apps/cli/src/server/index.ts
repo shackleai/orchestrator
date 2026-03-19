@@ -34,6 +34,7 @@ import { attachmentsRouter } from './routes/attachments.js'
 import { assetsRouter, assetServeRouter } from './routes/assets.js'
 import { workProductsRouter } from './routes/work-products.js'
 import { workspaceOperationsRouter } from './routes/workspace-operations.js'
+import { financeRouter } from './routes/finance.js'
 import { createApiAuth } from './middleware/auth.js'
 
 import { VERSION } from '../index.js'
@@ -114,6 +115,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   app.route('/api/companies', workProductsRouter(db))
   app.route('/api/companies', documentsRouter(db))
   app.route('/api/companies', workspaceOperationsRouter(db))
+  app.route('/api/companies', financeRouter(db))
 
   // --- Serve dashboard static files ---
   // Resolve dashboard dist relative to this file (works in monorepo and npm install)

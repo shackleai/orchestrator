@@ -119,6 +119,38 @@ export interface CostEvent {
   occurred_at: Date
 }
 
+
+export interface FinanceEvent {
+  id: string
+  company_id: string
+  event_type: string
+  amount_cents: number
+  description: string | null
+  agent_id: string | null
+  provider: string | null
+  model: string | null
+  created_at: Date
+}
+
+export interface FinanceBreakdown {
+  key: string
+  total_cents: number
+  event_count: number
+}
+
+export interface FinanceTimelineEntry {
+  date: string
+  total_cents: number
+  event_count: number
+}
+
+export interface FinanceTopSpender {
+  agent_id: string
+  agent_name: string
+  total_cents: number
+  event_count: number
+}
+
 export interface HeartbeatRun {
   id: string
   company_id: string

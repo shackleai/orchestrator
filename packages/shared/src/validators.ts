@@ -18,6 +18,8 @@ import {
   ProjectStatus,
   AgentApiKeyStatus,
   WorkProductType,
+  FinanceEventType,
+  WorkspaceOperationType,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -532,6 +534,26 @@ export type CompanyExportInput = z.infer<typeof CompanyExportInput>
 
 
 // ---------------------------------------------------------------------------
+// FinanceEvent
+// ---------------------------------------------------------------------------
+
+const financeEventTypeValues = Object.values(FinanceEventType) as [
+  string,
+  ...string[],
+]
+
+export const CreateFinanceEventInput = z.object({
+  company_id: uuid,
+  event_type: z.enum(financeEventTypeValues),
+  amount_cents: z.number().int().min(0),
+  description: z.string().nullable().optional(),
+  agent_id: uuid.nullable().optional(),
+  provider: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
+})
+export type CreateFinanceEventInput = z.infer<typeof CreateFinanceEventInput>
+
+// ---------------------------------------------------------------------------
 // Work Products
 // ---------------------------------------------------------------------------
 
@@ -549,3 +571,21 @@ export const CreateWorkProductInput = z.object({
   agent_id: z.string().uuid().nullable().optional(),
 })
 export type CreateWorkProductInput = z.infer<typeof CreateWorkProductInput>
+
+// ---------------------------------------------------------------------------
+// Workspace Operations — immutable audit trail
+// ---------------------------------------------------------------------------
+
+const workspaceOperationTypeValues = Object.values(WorkspaceOperationType) as [
+  string,
+  ...string[],
+]
+
+export const CreateWorkspaceOperationInput = z.object({
+  workspace_id: uuid,
+  agent_id: uuid,
+  operation_type: z.enum(workspaceOperationTypeValues),
+  file_path: z.string().nullable().optional(),
+  details: z.record(z.string(), z.unknown()).optional().default({}),
+})
+export type CreateWorkspaceOperationInput = z.infer<typeof CreateWorkspaceOperationInput>

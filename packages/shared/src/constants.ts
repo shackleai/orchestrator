@@ -146,6 +146,16 @@ export const WorkProductType = {
 export type WorkProductType =
   (typeof WorkProductType)[keyof typeof WorkProductType]
 
+export const FinanceEventType = {
+  LlmCall: 'llm_call',
+  ToolUse: 'tool_use',
+  BudgetAlert: 'budget_alert',
+  BudgetReset: 'budget_reset',
+  ManualAdjustment: 'manual_adjustment',
+} as const
+export type FinanceEventType =
+  (typeof FinanceEventType)[keyof typeof FinanceEventType]
+
 /** Maximum file size for attachments (10 MB). */
 export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -195,3 +205,17 @@ export const WORKTREE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 /** Minimum git version required for worktree support. */
 export const GIT_MIN_VERSION = '2.5.0'
+
+// ---------------------------------------------------------------------------
+// WebSocket real-time event types
+// ---------------------------------------------------------------------------
+
+export const WebSocketEventType = {
+  HeartbeatStart: 'heartbeat_start',
+  HeartbeatEnd: 'heartbeat_end',
+  AgentStatusChange: 'agent_status_change',
+  TaskUpdate: 'task_update',
+  CostEvent: 'cost_event',
+} as const
+export type WebSocketEventType =
+  (typeof WebSocketEventType)[keyof typeof WebSocketEventType]

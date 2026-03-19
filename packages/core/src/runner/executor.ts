@@ -401,6 +401,26 @@ export class HeartbeatExecutor {
           output_tokens: adapterResult.usage.outputTokens,
           cost_cents: adapterResult.usage.costCents,
         })
+
+        // Step 8b: Record finance event for dashboard tracking (best-effort)
+        try {
+          await this.db.query(
+            `INSERT INTO finance_events
+               (company_id, event_type, amount_cents, description, agent_id, provider, model)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              companyId,
+              'llm_call',
+              adapterResult.usage.costCents,
+              `${adapterResult.usage.provider}/${adapterResult.usage.model} — ${adapterResult.usage.inputTokens}in/${adapterResult.usage.outputTokens}out`,
+              agentId,
+              adapterResult.usage.provider ?? null,
+              adapterResult.usage.model ?? null,
+            ],
+          )
+        } catch {
+          // Best-effort — don't fail the heartbeat for finance event logging
+        }
       }
 
 
