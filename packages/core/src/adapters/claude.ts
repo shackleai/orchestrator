@@ -159,7 +159,6 @@ export class ClaudeAdapter implements AdapterModule {
       const child = spawn('claude', args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
         detached: !IS_WIN,
       })
 
@@ -218,7 +217,6 @@ export class ClaudeAdapter implements AdapterModule {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       const child = spawn('claude', ['--version'], {
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: IS_WIN,
       })
 
       child.stdout.on('data', () => {
