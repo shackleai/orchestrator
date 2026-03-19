@@ -149,6 +149,44 @@ export type WorkProductType =
 /** Maximum file size for attachments (10 MB). */
 export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
 
+/** Maximum file size for assets (10 MB). */
+export const MAX_ASSET_SIZE_BYTES = 10 * 1024 * 1024
+
+/** Allowed MIME types for asset uploads. */
+export const ALLOWED_ASSET_MIME_TYPES = [
+  // Images
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  // Documents
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/json',
+  // Archives
+  'application/zip',
+  'application/gzip',
+  // Office
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+] as const
+
+export const WorkspaceOperationType = {
+  FileRead: 'file_read',
+  FileWrite: 'file_write',
+  FileDelete: 'file_delete',
+  GitCommit: 'git_commit',
+  GitPush: 'git_push',
+  GitBranch: 'git_branch',
+  CommandExec: 'command_exec',
+} as const
+export type WorkspaceOperationType =
+  (typeof WorkspaceOperationType)[keyof typeof WorkspaceOperationType]
+
 /** Free tier limit for concurrent active worktrees per company. */
 export const FREE_TIER_MAX_WORKTREES = 5
 
