@@ -336,3 +336,17 @@ export const WorktreeCleanupInput = z.object({
 })
 export type WorktreeCleanupInput = z.infer<typeof WorktreeCleanupInput>
 
+
+// ---------------------------------------------------------------------------
+// Secret
+// ---------------------------------------------------------------------------
+
+export const CreateSecretInput = z.object({
+  name: nonEmpty.regex(
+    /^[A-Za-z_][A-Za-z0-9_]*$/,
+    'Secret name must be a valid env-var style identifier (letters, digits, underscores)',
+  ),
+  value: nonEmpty,
+  created_by: z.string().optional(),
+})
+export type CreateSecretInput = z.infer<typeof CreateSecretInput>
