@@ -90,10 +90,12 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
       serveStatic({ root: dashboardDist, rewriteRequestPath: () => '/favicon.svg' }),
     )
 
-    // SPA fallback — serve index.html for all non-API routes
+    // Cache index.html once at startup — avoids readFileSync blocking the event loop per request
+    const indexHtml = fs.readFileSync(path.join(dashboardDist, 'index.html'), 'utf-8')
+
+    // SPA fallback — serve cached index.html for all non-API routes
     app.get('*', (c) => {
-      const html = fs.readFileSync(path.join(dashboardDist, 'index.html'), 'utf-8')
-      return c.html(html)
+      return c.html(indexHtml)
     })
   }
 
