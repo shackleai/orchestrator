@@ -37,6 +37,7 @@ import type { AdapterRegistry } from '../adapters/index.js'
 import type { AdapterContext, AdapterResult, GoalAncestry } from '../adapters/index.js'
 import { getLastSessionState, saveSessionState } from '../adapters/index.js'
 import type { RunnerResult } from '../scheduler.js'
+import type { GovernanceEngine } from '../governance/index.js'
 
 /** Default timeout in seconds. */
 const DEFAULT_TIMEOUT_S = 300
@@ -81,18 +82,21 @@ export class HeartbeatExecutor {
   private observatory: Observatory
   private adapterRegistry: AdapterRegistry
   private contextBuilder: ContextBuilder
+  private governance: GovernanceEngine | null
 
   constructor(
     db: DatabaseProvider,
     costTracker: CostTracker,
     observatory: Observatory,
     adapterRegistry: AdapterRegistry,
+    governance?: GovernanceEngine,
   ) {
     this.db = db
     this.costTracker = costTracker
     this.observatory = observatory
     this.adapterRegistry = adapterRegistry
     this.contextBuilder = new ContextBuilder(db)
+    this.governance = governance ?? null
   }
 
   /**
@@ -168,6 +172,38 @@ export class HeartbeatExecutor {
         await this.markRunFailed(runId, errMsg)
         await this.markAgentIdle(agentId)
         return { exitCode: 1, stderr: errMsg }
+      }
+
+      // Step 4b: Governance check
+      if (this.governance) {
+        const policyResult = await this.governance.checkPolicy(
+          companyId,
+          agentId,
+          agent.adapter_type,
+        )
+
+        if (!policyResult.allowed) {
+          const errMsg = `Governance violation: ${policyResult.reason}`
+          await this.markRunFailed(runId, errMsg)
+          await this.markAgentIdle(agentId)
+
+          this.observatory.logEvent({
+            company_id: companyId,
+            entity_type: 'heartbeat_run',
+            entity_id: runId,
+            actor_type: 'agent',
+            actor_id: agentId,
+            action: 'governance_violation',
+            changes: {
+              trigger,
+              adapter: agent.adapter_type,
+              policyId: policyResult.policyId ?? null,
+              reason: policyResult.reason,
+            },
+          })
+
+          return { exitCode: 1, stderr: errMsg }
+        }
       }
 
       // ── Step 5: Build context ───────────────────────────────────────

@@ -18,6 +18,7 @@ import {
   McpAdapter,
   OpenClawAdapter,
   CrewAIAdapter,
+  GovernanceEngine,
 } from '@shackleai/core'
 import { readConfig, writeConfig } from '../config.js'
 import type { ShackleAIConfig } from '../config.js'
@@ -82,8 +83,11 @@ export async function startCommand(options: { port: number }): Promise<void> {
   adapterRegistry.register(new OpenClawAdapter())
   adapterRegistry.register(new CrewAIAdapter())
 
+  // GovernanceEngine enforces policies before adapter execution
+  const governance = new GovernanceEngine(db)
+
   // HeartbeatExecutor is the single source of truth for heartbeat_run records
-  const executor = new HeartbeatExecutor(db, costTracker, observatory, adapterRegistry)
+  const executor = new HeartbeatExecutor(db, costTracker, observatory, adapterRegistry, governance)
 
   // Scheduler wraps executor with coalescing and cron scheduling
   const scheduler = new Scheduler(db, (agentId, trigger) =>
