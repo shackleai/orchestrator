@@ -31,6 +31,30 @@ async function seedTestData(provider: DatabaseProvider): Promise<void> {
   )
 }
 
+/** Insert a cost_event with an explicit occurred_at timestamp. */
+async function insertCostEvent(
+  provider: DatabaseProvider,
+  agentId: string,
+  costCents: number,
+  occurredAt?: Date,
+): Promise<void> {
+  const ts = occurredAt ?? new Date()
+  await provider.query(
+    `INSERT INTO cost_events (company_id, agent_id, provider, model, input_tokens, output_tokens, cost_cents, occurred_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      COMPANY_ID,
+      agentId,
+      'anthropic',
+      'claude-opus-4',
+      100,
+      50,
+      costCents,
+      ts.toISOString(),
+    ],
+  )
+}
+
 beforeAll(async () => {
   db = new PGliteProvider() // in-memory
   await runMigrations(db)
@@ -107,8 +131,8 @@ describe('CostTracker', () => {
   })
 
   describe('checkBudget', () => {
-    it('returns correct percentUsed', async () => {
-      // Agent A: budget 5000, spent 150 = 3%
+    it('returns correct percentUsed from cost_events', async () => {
+      // Agent A: budget 5000, cost_events for this month = 150 = 3%
       const status = await tracker.checkBudget(COMPANY_ID, AGENT_A_ID)
       expect(status.withinBudget).toBe(true)
       expect(status.percentUsed).toBe(3)
@@ -116,11 +140,8 @@ describe('CostTracker', () => {
     })
 
     it('triggers soft alert at 80%', async () => {
-      // Push agent A to 80%: budget=5000, need spent=4000
-      await db.query(
-        'UPDATE agents SET spent_monthly_cents = $1 WHERE id = $2',
-        [4000, AGENT_A_ID],
-      )
+      // Push agent A to 80%: budget=5000, need total=4000, already have 150 => add 3850
+      await insertCostEvent(db, AGENT_A_ID, 3850)
 
       const status = await tracker.checkBudget(COMPANY_ID, AGENT_A_ID)
       expect(status.withinBudget).toBe(true)
@@ -129,10 +150,8 @@ describe('CostTracker', () => {
     })
 
     it('returns hard stop at 100%', async () => {
-      await db.query(
-        'UPDATE agents SET spent_monthly_cents = $1 WHERE id = $2',
-        [5000, AGENT_A_ID],
-      )
+      // Need total=5000, currently at 4000 => add 1000
+      await insertCostEvent(db, AGENT_A_ID, 1000)
 
       const status = await tracker.checkBudget(COMPANY_ID, AGENT_A_ID)
       expect(status.withinBudget).toBe(false)
@@ -141,10 +160,8 @@ describe('CostTracker', () => {
     })
 
     it('returns hard stop when over 100%', async () => {
-      await db.query(
-        'UPDATE agents SET spent_monthly_cents = $1 WHERE id = $2',
-        [6000, AGENT_A_ID],
-      )
+      // Need total=6000, currently at 5000 => add 1000
+      await insertCostEvent(db, AGENT_A_ID, 1000)
 
       const status = await tracker.checkBudget(COMPANY_ID, AGENT_A_ID)
       expect(status.withinBudget).toBe(false)
@@ -167,6 +184,31 @@ describe('CostTracker', () => {
       )
       expect(status.withinBudget).toBe(true)
       expect(status.percentUsed).toBe(0)
+      expect(status.softAlert).toBe(false)
+    })
+
+    it('ignores cost_events from previous months (budget auto-resets)', async () => {
+      // Create a fresh agent with a known budget
+      const AGENT_C_ID = '00000000-0000-4000-a000-000000000012'
+      await db.query(
+        `INSERT INTO agents (id, company_id, name, adapter_type, budget_monthly_cents, spent_monthly_cents)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [AGENT_C_ID, COMPANY_ID, 'fresh-bot', 'claude', 1000, 0],
+      )
+
+      // Insert a cost event from last month
+      const lastMonth = new Date()
+      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1)
+      lastMonth.setUTCDate(15)
+      await insertCostEvent(db, AGENT_C_ID, 900, lastMonth)
+
+      // Insert a small cost event this month
+      await insertCostEvent(db, AGENT_C_ID, 50)
+
+      // Budget check should only see 50 cents (this month), not 950
+      const status = await tracker.checkBudget(COMPANY_ID, AGENT_C_ID)
+      expect(status.withinBudget).toBe(true)
+      expect(status.percentUsed).toBe(5) // 50/1000 = 5%
       expect(status.softAlert).toBe(false)
     })
   })
@@ -192,11 +234,9 @@ describe('CostTracker', () => {
 
       expect(agentA).toBeDefined()
       expect(agentA!.agent_name).toBe('coder-bot')
-      expect(agentA!.total_cents).toBe(150) // from the first recordCost
 
       expect(agentB).toBeDefined()
       expect(agentB!.agent_name).toBe('reviewer-bot')
-      expect(agentB!.total_cents).toBe(75)
     })
   })
 

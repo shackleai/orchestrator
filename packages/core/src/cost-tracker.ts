@@ -88,32 +88,47 @@ export class CostTracker {
    * - Budget of 0 means unlimited (always within budget).
    * - Soft alert at 80% usage.
    * - Hard stop (withinBudget=false) at 100% usage.
+   *
+   * Spend is computed from cost_events for the current calendar month,
+   * so budgets automatically reset each month without a separate cron job.
    */
   async checkBudget(
     companyId: string,
     agentId: string,
   ): Promise<BudgetStatus> {
-    const result = await this.db.query<{
+    const budgetResult = await this.db.query<{
       budget_monthly_cents: number
-      spent_monthly_cents: number
     }>(
-      `SELECT budget_monthly_cents, spent_monthly_cents FROM agents
+      `SELECT budget_monthly_cents FROM agents
        WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
     )
 
-    if (result.rows.length === 0) {
+    if (budgetResult.rows.length === 0) {
       return { withinBudget: true, percentUsed: 0, softAlert: false }
     }
 
-    const { budget_monthly_cents, spent_monthly_cents } = result.rows[0]
+    const { budget_monthly_cents } = budgetResult.rows[0]
 
     // Unlimited budget
     if (budget_monthly_cents === 0) {
       return { withinBudget: true, percentUsed: 0, softAlert: false }
     }
 
-    const percentUsed = (spent_monthly_cents / budget_monthly_cents) * 100
+    // Sum cost_events for the current calendar month instead of reading
+    // the stale spent_monthly_cents counter. This ensures budgets
+    // automatically reset at the start of each month.
+    const monthStart = firstOfCurrentMonth()
+    const spendResult = await this.db.query<{ total_cents: number }>(
+      `SELECT COALESCE(SUM(cost_cents), 0)::int AS total_cents
+       FROM cost_events
+       WHERE company_id = $1 AND agent_id = $2 AND occurred_at >= $3`,
+      [companyId, agentId, monthStart.toISOString()],
+    )
+
+    const spentCents = spendResult.rows[0]?.total_cents ?? 0
+
+    const percentUsed = (spentCents / budget_monthly_cents) * 100
     const softAlert = percentUsed >= 80
     const withinBudget = percentUsed < 100
 
@@ -159,6 +174,10 @@ export class CostTracker {
 
   /**
    * Reset monthly spend counters to 0 for all agents and the company itself.
+   *
+   * NOTE: With the time-aware checkBudget (which sums cost_events from the
+   * current month), this method is no longer required for budget enforcement.
+   * It is kept for callers that still update the denormalized counters.
    */
   async resetMonthlySpend(companyId: string): Promise<void> {
     await this.db.query(
@@ -173,4 +192,13 @@ export class CostTracker {
       [companyId],
     )
   }
+}
+
+/**
+ * Return the first instant of the current UTC month (e.g. 2026-03-01T00:00:00Z).
+ * Exported for testability.
+ */
+export function firstOfCurrentMonth(): Date {
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
 }
