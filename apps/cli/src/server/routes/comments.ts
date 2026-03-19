@@ -131,6 +131,62 @@ export function commentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hon
     return c.json({ data: result.rows[0] })
   })
 
+  // PATCH /api/companies/:id/issues/:issueId/comments/:cid — update comment
+  app.patch('/:id/issues/:issueId/comments/:cid', companyScope, async (c) => {
+    const companyId = c.req.param('id')!
+    const issueId = c.req.param('issueId')!
+    const commentId = c.req.param('cid')!
+
+    const found = await verifyIssueOwnership(db, issueId, companyId)
+    if (!found) {
+      return c.json({ error: 'Issue not found' }, 404)
+    }
+
+    let reqBody: unknown
+    try {
+      reqBody = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
+
+    const updates = reqBody as { content?: string; is_resolved?: boolean }
+    const setClauses: string[] = []
+    const values: unknown[] = []
+    let paramIdx = 1
+
+    if (typeof updates.content === 'string') {
+      if (!updates.content.trim()) {
+        return c.json({ error: 'Content cannot be empty' }, 400)
+      }
+      setClauses.push(`content = $${paramIdx++}`)
+      values.push(updates.content.trim())
+    }
+
+    if (typeof updates.is_resolved === 'boolean') {
+      setClauses.push(`is_resolved = $${paramIdx++}`)
+      values.push(updates.is_resolved)
+    }
+
+    if (setClauses.length === 0) {
+      return c.json({ error: 'No fields to update' }, 400)
+    }
+
+    const whereIdIdx = paramIdx++
+    const whereIssueIdx = paramIdx
+    values.push(commentId, issueId)
+
+    const result = await db.query<IssueComment>(
+      `UPDATE issue_comments SET ${setClauses.join(', ')} WHERE id = $${whereIdIdx} AND issue_id = $${whereIssueIdx} RETURNING *`,
+      values,
+    )
+
+    if (result.rows.length === 0) {
+      return c.json({ error: 'Comment not found' }, 404)
+    }
+
+    return c.json({ data: result.rows[0] })
+  })
+
   // DELETE /api/companies/:id/issues/:issueId/comments/:cid — delete comment
   app.delete('/:id/issues/:issueId/comments/:cid', companyScope, async (c) => {
     const companyId = c.req.param('id')!
