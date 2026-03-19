@@ -41,11 +41,21 @@ const migrations: Migration[] = [
 ]
 
 /**
+ * Track which DB instances have already been migrated in this process.
+ * Prevents redundant migration runs (e.g., if both CLI init and server startup call runMigrations).
+ */
+const migratedInstances = new WeakSet<DatabaseProvider>()
+
+/**
  * Run all pending migrations against the given database provider.
  * Tracks applied migrations in a `_migrations` table.
- * Idempotent — safe to call multiple times.
+ * Idempotent — safe to call multiple times; second call on the same instance is a no-op.
  */
 export async function runMigrations(db: DatabaseProvider): Promise<string[]> {
+  if (migratedInstances.has(db)) {
+    return []
+  }
+
   // Ensure the migrations tracking table exists
   await db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
@@ -82,6 +92,7 @@ export async function runMigrations(db: DatabaseProvider): Promise<string[]> {
     newly.push(migration.name)
   }
 
+  migratedInstances.add(db)
   return newly
 }
 
