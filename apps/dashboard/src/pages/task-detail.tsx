@@ -4,12 +4,21 @@ import { useParams, Link } from 'react-router-dom'
 import { useCompanyId } from '@/hooks/useCompanyId'
 import {
   ArrowLeft,
+  Bot,
+  Check,
+  CheckCircle2,
+  Circle,
   ListTodo,
   Loader2,
+  MessageSquare,
+  Pencil,
+  Reply,
   Send,
   Clock,
   Tag,
+  Trash2,
   GitBranch,
+  User,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +41,8 @@ import {
   fetchActivity,
   fetchIssueLabels,
   createComment,
+  updateComment,
+  deleteComment,
   updateIssue,
   type Issue,
   type Comment,
@@ -86,18 +97,322 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-function CommentItem({ comment }: { comment: Comment }) {
+// ---------------------------------------------------------------------------
+// Threaded comments
+// ---------------------------------------------------------------------------
+
+interface CommentNode extends Comment {
+  children: CommentNode[]
+}
+
+function buildCommentTree(comments: Comment[]): CommentNode[] {
+  const map = new Map<string, CommentNode>()
+  const roots: CommentNode[] = []
+
+  // Sort ascending so parents are processed before children
+  const sorted = [...comments].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )
+
+  for (const c of sorted) {
+    map.set(c.id, { ...c, children: [] })
+  }
+
+  for (const c of sorted) {
+    const node = map.get(c.id)!
+    if (c.parent_id && map.has(c.parent_id)) {
+      map.get(c.parent_id)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  return roots
+}
+
+function CommentAuthor({
+  agentId,
+  agentMap,
+}: {
+  agentId: string | null
+  agentMap: Map<string, Agent>
+}) {
+  if (!agentId) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+        <User className="h-3.5 w-3.5 text-muted-foreground" />
+        User
+      </span>
+    )
+  }
+
+  const agent = agentMap.get(agentId)
   return (
-    <div className="border-b border-border py-4 last:border-b-0">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          {comment.author_agent_id ? `Agent ${comment.author_agent_id.slice(0, 8)}` : 'User'}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {formatRelativeTime(comment.created_at)}
-        </span>
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+      <Bot className="h-3.5 w-3.5 text-primary" />
+      {agent ? agent.name : `Agent ${agentId.slice(0, 8)}`}
+    </span>
+  )
+}
+
+function ThreadedCommentItem({
+  comment,
+  companyId,
+  issueId,
+  agentMap,
+  depth,
+}: {
+  comment: CommentNode
+  companyId: string
+  issueId: string
+  agentMap: Map<string, Agent>
+  depth: number
+}) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [isEditing, setIsEditing] = useState(false)
+  const [editDraft, setEditDraft] = useState(comment.content)
+  const [isReplying, setIsReplying] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showActions, setShowActions] = useState(false)
+
+  const invalidateComments = () => {
+    queryClient.invalidateQueries({ queryKey: ['comments', companyId, issueId] })
+  }
+
+  const resolveMutation = useMutation({
+    mutationFn: () =>
+      updateComment(companyId, issueId, comment.id, {
+        is_resolved: !comment.is_resolved,
+      }),
+    onSuccess: () => {
+      invalidateComments()
+      toast(comment.is_resolved ? 'Comment unresolved' : 'Comment resolved', 'success')
+    },
+    onError: (err: Error) => toast(`Failed: ${err.message}`, 'error'),
+  })
+
+  const editMutation = useMutation({
+    mutationFn: (content: string) =>
+      updateComment(companyId, issueId, comment.id, { content }),
+    onSuccess: () => {
+      invalidateComments()
+      setIsEditing(false)
+      toast('Comment updated', 'success')
+    },
+    onError: (err: Error) => toast(`Failed: ${err.message}`, 'error'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteComment(companyId, issueId, comment.id),
+    onSuccess: () => {
+      invalidateComments()
+      toast('Comment deleted', 'success')
+    },
+    onError: (err: Error) => toast(`Failed: ${err.message}`, 'error'),
+  })
+
+  const handleEditSave = () => {
+    const trimmed = editDraft.trim()
+    if (!trimmed) return
+    if (trimmed === comment.content) {
+      setIsEditing(false)
+      return
+    }
+    editMutation.mutate(trimmed)
+  }
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setEditDraft(comment.content)
+      setIsEditing(false)
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      handleEditSave()
+    }
+  }
+
+  return (
+    <div className={depth > 0 ? 'ml-6 border-l-2 border-border pl-4' : ''}>
+      <div
+        className={`group py-3 ${comment.is_resolved ? 'opacity-60' : ''}`}
+        onMouseEnter={() => setShowActions(true)}
+        onMouseLeave={() => {
+          setShowActions(false)
+          setShowDeleteConfirm(false)
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <CommentAuthor agentId={comment.author_agent_id} agentMap={agentMap} />
+            <span className="text-xs text-muted-foreground shrink-0">
+              {formatRelativeTime(comment.created_at)}
+            </span>
+            {comment.is_resolved && (
+              <Badge variant="success" className="text-[10px] px-1.5 py-0">
+                Resolved
+              </Badge>
+            )}
+          </div>
+
+          {/* Action buttons -- visible on hover */}
+          <div
+            className={`flex items-center gap-0.5 shrink-0 transition-opacity ${
+              showActions ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setIsReplying(!isReplying)}
+              title="Reply"
+              aria-label="Reply to comment"
+            >
+              <Reply className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => resolveMutation.mutate()}
+              disabled={resolveMutation.isPending}
+              title={comment.is_resolved ? 'Unresolve' : 'Resolve'}
+              aria-label={comment.is_resolved ? 'Unresolve comment' : 'Resolve comment'}
+            >
+              {resolveMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : comment.is_resolved ? (
+                <Circle className="h-3.5 w-3.5" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => {
+                setEditDraft(comment.content)
+                setIsEditing(true)
+              }}
+              title="Edit"
+              aria-label="Edit comment"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            {showDeleteConfirm ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  'Confirm'
+                )}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive hover:text-destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+                title="Delete"
+                aria-label="Delete comment"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Body -- editable or static */}
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              rows={3}
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+              disabled={editMutation.isPending}
+              autoFocus
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-7"
+                onClick={handleEditSave}
+                disabled={editMutation.isPending || !editDraft.trim()}
+              >
+                {editMutation.isPending ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Check className="mr-1 h-3 w-3" />
+                )}
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7"
+                onClick={() => {
+                  setEditDraft(comment.content)
+                  setIsEditing(false)
+                }}
+              >
+                Cancel
+              </Button>
+              <span className="text-[10px] text-muted-foreground ml-auto hidden sm:inline">
+                Ctrl+Enter to save
+              </span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+        )}
       </div>
-      <p className="text-sm whitespace-pre-wrap">{comment.body}</p>
+
+      {/* Reply form */}
+      {isReplying && (
+        <div className="ml-6 border-l-2 border-primary/30 pl-4 pb-2">
+          <AddCommentForm
+            companyId={companyId}
+            issueId={issueId}
+            parentId={comment.id}
+            placeholder={`Reply to ${
+              comment.author_agent_id
+                ? agentMap.get(comment.author_agent_id)?.name ?? 'agent'
+                : 'user'
+            }...`}
+            onSuccess={() => setIsReplying(false)}
+            onCancel={() => setIsReplying(false)}
+            autoFocus
+          />
+        </div>
+      )}
+
+      {/* Child comments */}
+      {comment.children.length > 0 && (
+        <div>
+          {comment.children.map((child) => (
+            <ThreadedCommentItem
+              key={child.id}
+              comment={child}
+              companyId={companyId}
+              issueId={issueId}
+              agentMap={agentMap}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -105,20 +420,31 @@ function CommentItem({ comment }: { comment: Comment }) {
 function AddCommentForm({
   companyId,
   issueId,
+  parentId,
+  placeholder,
+  onSuccess,
+  onCancel,
+  autoFocus,
 }: {
   companyId: string
   issueId: string
+  parentId?: string | null
+  placeholder?: string
+  onSuccess?: () => void
+  onCancel?: () => void
+  autoFocus?: boolean
 }) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [body, setBody] = useState('')
 
   const mutation = useMutation({
-    mutationFn: (text: string) => createComment(companyId, issueId, text),
+    mutationFn: (text: string) => createComment(companyId, issueId, text, parentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', companyId, issueId] })
       setBody('')
       toast('Comment added', 'success')
+      onSuccess?.()
     },
     onError: (err: Error) => {
       toast(`Failed to add comment: ${err.message}`, 'error')
@@ -131,30 +457,58 @@ function AddCommentForm({
     mutation.mutate(body.trim())
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      if (body.trim()) mutation.mutate(body.trim())
+    }
+    if (e.key === 'Escape' && onCancel) {
+      onCancel()
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex gap-2">
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Add a comment..."
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder ?? 'Add a comment...'}
         rows={2}
         className="flex flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+        autoFocus={autoFocus}
       />
-      <Button
-        type="submit"
-        size="sm"
-        disabled={mutation.isPending || !body.trim()}
-        className="self-end"
-      >
-        {mutation.isPending ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Send className="h-4 w-4" />
+      <div className="flex flex-col gap-1 self-end">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={mutation.isPending || !body.trim()}
+        >
+          {mutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+        </Button>
+        {onCancel && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            className="text-xs"
+          >
+            Cancel
+          </Button>
         )}
-      </Button>
+      </div>
     </form>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Editable fields
+// ---------------------------------------------------------------------------
 
 function EditableTitle({
   value,
@@ -280,6 +634,10 @@ function EditableDescription({
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 const statusVariant: Record<
   string,
@@ -418,6 +776,10 @@ function LabelsDisplay({ labels }: { labels: Label[] }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export function TaskDetailPage() {
   const { id: taskId } = useParams<{ id: string }>()
   const companyId = useCompanyId()
@@ -508,12 +870,8 @@ export function TaskDetailPage() {
     }
   }
 
-  const sortedComments = comments
-    ? [...comments].sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )
-    : []
+  const commentTree = comments ? buildCommentTree(comments) : []
+  const totalComments = comments?.length ?? 0
 
   const sortedActivity = activity
     ? [...activity].sort(
@@ -623,11 +981,12 @@ export function TaskDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
                 Comments
-                {sortedComments.length > 0 && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    ({sortedComments.length})
+                {totalComments > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({totalComments})
                   </span>
                 )}
               </CardTitle>
@@ -642,12 +1001,22 @@ export function TaskDetailPage() {
                     <div key={i} className="h-16 animate-pulse rounded bg-muted" />
                   ))}
                 </div>
-              ) : sortedComments.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">No comments yet</p>
+              ) : commentTree.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8">
+                  <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No comments yet</p>
+                </div>
               ) : (
-                <div>
-                  {sortedComments.map((comment) => (
-                    <CommentItem key={comment.id} comment={comment} />
+                <div className="divide-y divide-border">
+                  {commentTree.map((comment) => (
+                    <ThreadedCommentItem
+                      key={comment.id}
+                      comment={comment}
+                      companyId={companyId!}
+                      issueId={taskId!}
+                      agentMap={agentMap}
+                      depth={0}
+                    />
                   ))}
                 </div>
               )}

@@ -91,10 +91,10 @@ export interface DashboardData {
 export interface Comment {
   id: string
   issue_id: string
-  body: string
+  content: string
   author_agent_id: string | null
   parent_id: string | null
-  resolved: boolean
+  is_resolved: boolean
   created_at: string
 }
 
@@ -316,6 +316,22 @@ async function patchJson<T>(url: string, body: unknown): Promise<T> {
   return json.data
 }
 
+async function deleteJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { method: 'DELETE' })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    try {
+      const errJson = JSON.parse(text) as { error?: string }
+      if (errJson.error) throw new Error(errJson.error)
+    } catch (e) {
+      if (e instanceof Error && !e.message.startsWith('API error')) throw e
+    }
+    throw new Error(`API error: ${res.status} ${text}`)
+  }
+  const json = (await res.json()) as ApiResponse<T>
+  return json.data
+}
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
@@ -410,8 +426,34 @@ export function fetchComments(companyId: string, issueId: string) {
   return fetchJson<Comment[]>(`${BASE_URL}/companies/${companyId}/issues/${issueId}/comments`)
 }
 
-export function createComment(companyId: string, issueId: string, body: string) {
-  return postJson<Comment>(`${BASE_URL}/companies/${companyId}/issues/${issueId}/comments`, { body })
+export function createComment(
+  companyId: string,
+  issueId: string,
+  content: string,
+  parentId?: string | null,
+) {
+  return postJson<Comment>(
+    `${BASE_URL}/companies/${companyId}/issues/${issueId}/comments`,
+    { content, parent_id: parentId ?? null },
+  )
+}
+
+export function updateComment(
+  companyId: string,
+  issueId: string,
+  commentId: string,
+  data: { content?: string; is_resolved?: boolean },
+) {
+  return patchJson<Comment>(
+    `${BASE_URL}/companies/${companyId}/issues/${issueId}/comments/${commentId}`,
+    data,
+  )
+}
+
+export function deleteComment(companyId: string, issueId: string, commentId: string) {
+  return deleteJson<Comment>(
+    `${BASE_URL}/companies/${companyId}/issues/${issueId}/comments/${commentId}`,
+  )
 }
 
 export function updateIssue(companyId: string, issueId: string, data: Partial<Issue>) {
