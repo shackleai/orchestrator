@@ -382,3 +382,29 @@ export const CreateQuotaWindowInput = z.object({
   max_tokens: z.number().int().min(1).nullable().optional(),
 })
 export type CreateQuotaWindowInput = z.infer<typeof CreateQuotaWindowInput>
+
+// ---------------------------------------------------------------------------
+// Label
+// ---------------------------------------------------------------------------
+
+/** Valid CSS hex color (3 or 6 digit). */
+const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Must be a valid hex color (e.g. #ff0000)')
+
+export const CreateLabelInput = z.object({
+  name: nonEmpty,
+  color: hexColor.optional().default('#6b7280'),
+  description: z.string().nullable().optional(),
+})
+export type CreateLabelInput = z.infer<typeof CreateLabelInput>
+
+export const UpdateLabelInput = z.object({
+  name: nonEmpty.optional(),
+  color: hexColor.optional(),
+  description: z.string().nullable().optional(),
+})
+export type UpdateLabelInput = z.infer<typeof UpdateLabelInput>
+
+export const AssignLabelInput = z.object({
+  label_id: uuid,
+})
+export type AssignLabelInput = z.infer<typeof AssignLabelInput>

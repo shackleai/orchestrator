@@ -306,3 +306,19 @@ export interface QuotaStatus {
   current_tokens: number
   exceeded: boolean
 }
+
+export interface Label {
+  id: string
+  company_id: string
+  name: string
+  color: string
+  description: string | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface IssueLabel {
+  issue_id: string
+  label_id: string
+  created_at: Date
+}

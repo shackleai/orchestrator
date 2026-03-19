@@ -20,6 +20,7 @@ import * as m018 from './018_agent_config_revisions.js'
 import * as m019 from './019_heartbeat_run_events.js'
 import * as m020 from './020_quota_windows.js'
 import * as m021 from './021_honesty_checklist.js'
+import * as m022 from './022_labels.js'
 
 export interface Migration {
   name: string
@@ -48,6 +49,7 @@ const migrations: Migration[] = [
   m019,
   m020,
   m021,
+  m022,
 ]
 
 /**

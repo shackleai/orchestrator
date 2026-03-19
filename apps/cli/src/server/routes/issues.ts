@@ -27,32 +27,41 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
   // GET /api/companies/:id/issues â€” list with filters (status, priority, assignee)
   app.get('/:id/issues', companyScope, async (c) => {
     const companyId = c.req.param('id')
-    const { status, priority, assignee } = c.req.query()
+    const { status, priority, assignee, label } = c.req.query()
 
-    const conditions: string[] = ['company_id = $1']
+    const conditions: string[] = ['i.company_id = $1']
     const params: unknown[] = [companyId]
     let paramIndex = 2
 
     if (status) {
-      conditions.push(`status = $${paramIndex++}`)
+      conditions.push(`i.status = $${paramIndex++}`)
       params.push(status)
     }
 
     if (priority) {
-      conditions.push(`priority = $${paramIndex++}`)
+      conditions.push(`i.priority = $${paramIndex++}`)
       params.push(priority)
     }
 
     if (assignee) {
-      conditions.push(`assignee_agent_id = $${paramIndex++}`)
+      conditions.push(`i.assignee_agent_id = $${paramIndex++}`)
       params.push(assignee)
+    }
+
+
+    // Filter by label name — join through issue_labels + labels
+    let joinClause = ''
+    if (label) {
+      joinClause = `INNER JOIN issue_labels il ON il.issue_id = i.id
+                     INNER JOIN labels lbl ON lbl.id = il.label_id AND lbl.name = $${paramIndex++}`
+      params.push(label)
     }
 
     const { limit, offset } = parsePagination(c)
 
     const where = conditions.join(' AND ')
     const result = await db.query<Issue>(
-      `SELECT * FROM issues WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      `SELECT i.* FROM issues i ${joinClause} WHERE ${where} ORDER BY i.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...params, limit, offset],
     )
 
