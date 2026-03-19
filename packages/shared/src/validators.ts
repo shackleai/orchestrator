@@ -350,3 +350,19 @@ export const CreateSecretInput = z.object({
   created_by: z.string().optional(),
 })
 export type CreateSecretInput = z.infer<typeof CreateSecretInput>
+
+// ---------------------------------------------------------------------------
+// QuotaWindow
+// ---------------------------------------------------------------------------
+
+const windowDurationValues = ['1m', '5m', '15m', '1h', '6h', '1d'] as const
+
+export const CreateQuotaWindowInput = z.object({
+  company_id: uuid,
+  agent_id: uuid.nullable().optional(),
+  provider: z.string().nullable().optional(),
+  window_duration: z.enum(windowDurationValues).default('1h'),
+  max_requests: z.number().int().min(1).nullable().optional(),
+  max_tokens: z.number().int().min(1).nullable().optional(),
+})
+export type CreateQuotaWindowInput = z.infer<typeof CreateQuotaWindowInput>

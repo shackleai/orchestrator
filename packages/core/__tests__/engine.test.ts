@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { PGliteProvider, runMigrations } from '@shackleai/db'
 import { PolicyAction } from '@shackleai/shared'
-import { GovernanceEngine, RateLimiter } from '../src/governance/index.js'
+import { GovernanceEngine } from '../src/governance/index.js'
+import { QuotaManager } from '../src/quota/index.js'
 
 // ---------------------------------------------------------------------------
 // Shared test fixtures
@@ -242,54 +243,119 @@ describe('GovernanceEngine', () => {
 })
 
 // ---------------------------------------------------------------------------
-// RateLimiter
+// QuotaManager
 // ---------------------------------------------------------------------------
 
-describe('RateLimiter', () => {
-  let limiter: RateLimiter
+describe('QuotaManager', () => {
+  let db: PGliteProvider
+  let quotaManager: QuotaManager
 
-  const POLICY_ID = '00000000-0000-0000-0000-000000000099'
+  beforeAll(async () => {
+    db = new PGliteProvider()
+    await runMigrations(db)
 
-  beforeEach(() => {
-    limiter = new RateLimiter()
+    await db.exec(`
+      INSERT INTO companies (id, name, issue_prefix)
+      VALUES ('00000000-0000-0000-0000-000000000001', 'Quota Corp', 'QC');
+    `)
+    await db.exec(`
+      INSERT INTO agents (id, company_id, name, role, adapter_type, adapter_config)
+      VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Agent Q', 'worker', 'process', '{}');
+    `)
+
+    quotaManager = new QuotaManager(db)
   })
 
-  it('should allow calls within the rate limit', () => {
-    // 10 calls per hour
-    for (let i = 0; i < 10; i++) {
-      expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 10)).toBe(true)
+  afterAll(async () => {
+    await db.close()
+  })
+
+  beforeEach(async () => {
+    await db.exec('DELETE FROM quota_windows')
+    await db.exec('DELETE FROM cost_events')
+  })
+
+  it('should allow when no quotas exist', async () => {
+    const result = await quotaManager.checkQuota(COMPANY_ID, AGENT_ID, 'anthropic')
+    expect(result.allowed).toBe(true)
+  })
+
+  it('should deny when request quota is exceeded', async () => {
+    await db.query(
+      `INSERT INTO quota_windows (company_id, agent_id, provider, window_duration, max_requests)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [COMPANY_ID, AGENT_ID, 'anthropic', '1h', 3],
+    )
+
+    for (let i = 0; i < 3; i++) {
+      await db.query(
+        `INSERT INTO cost_events (company_id, agent_id, provider, input_tokens, output_tokens, cost_cents)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [COMPANY_ID, AGENT_ID, 'anthropic', 100, 50, 1],
+      )
     }
+
+    const result = await quotaManager.checkQuota(COMPANY_ID, AGENT_ID, 'anthropic')
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('Request quota exceeded')
+    expect(result.quotaId).toBeDefined()
   })
 
-  it('should deny when rate limit is exceeded', () => {
-    // 3 calls per hour — consume all tokens
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 3)).toBe(true)
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 3)).toBe(true)
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 3)).toBe(true)
+  it('should deny when token quota is exceeded', async () => {
+    await db.query(
+      `INSERT INTO quota_windows (company_id, agent_id, provider, window_duration, max_tokens)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [COMPANY_ID, AGENT_ID, 'anthropic', '1h', 500],
+    )
 
-    // 4th call should be denied
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 3)).toBe(false)
+    await db.query(
+      `INSERT INTO cost_events (company_id, agent_id, provider, input_tokens, output_tokens, cost_cents)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [COMPANY_ID, AGENT_ID, 'anthropic', 100, 500, 10],
+    )
+
+    const result = await quotaManager.checkQuota(COMPANY_ID, AGENT_ID, 'anthropic')
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('Token quota exceeded')
   })
 
-  it('should track separate buckets per policy+agent pair', () => {
-    // Exhaust AGENT_ID's bucket
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 1)).toBe(true)
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 1)).toBe(false)
+  it('should apply company-wide quotas', async () => {
+    await db.query(
+      `INSERT INTO quota_windows (company_id, agent_id, provider, window_duration, max_requests)
+       VALUES ($1, NULL, $2, $3, $4)`,
+      [COMPANY_ID, 'anthropic', '1h', 2],
+    )
 
-    // OTHER_AGENT_ID should still have tokens
-    expect(limiter.checkRateLimit(POLICY_ID, OTHER_AGENT_ID, 1)).toBe(true)
+    for (let i = 0; i < 2; i++) {
+      await db.query(
+        `INSERT INTO cost_events (company_id, agent_id, provider, input_tokens, output_tokens, cost_cents)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [COMPANY_ID, AGENT_ID, 'anthropic', 100, 50, 1],
+      )
+    }
+
+    const result = await quotaManager.checkQuota(COMPANY_ID, AGENT_ID, 'anthropic')
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('company')
   })
 
-  it('should deny when maxCallsPerHour is 0', () => {
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 0)).toBe(false)
-  })
+  it('should return quota status with current usage', async () => {
+    await db.query(
+      `INSERT INTO quota_windows (company_id, agent_id, provider, window_duration, max_requests, max_tokens)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [COMPANY_ID, AGENT_ID, 'anthropic', '1h', 10, 10000],
+    )
 
-  it('should reset all buckets', () => {
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 1)).toBe(true)
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 1)).toBe(false)
+    await db.query(
+      `INSERT INTO cost_events (company_id, agent_id, provider, input_tokens, output_tokens, cost_cents)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [COMPANY_ID, AGENT_ID, 'anthropic', 200, 300, 5],
+    )
 
-    limiter.reset()
-
-    expect(limiter.checkRateLimit(POLICY_ID, AGENT_ID, 1)).toBe(true)
+    const statuses = await quotaManager.getQuotaStatus(COMPANY_ID, AGENT_ID)
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0].current_requests).toBe(1)
+    expect(statuses[0].current_tokens).toBe(500)
+    expect(statuses[0].exceeded).toBe(false)
   })
 })

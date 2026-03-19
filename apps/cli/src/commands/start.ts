@@ -20,6 +20,7 @@ import {
   OpenClawAdapter,
   CrewAIAdapter,
   GovernanceEngine,
+  QuotaManager,
 } from '@shackleai/core'
 import { AgentApiKeyStatus } from '@shackleai/shared'
 import { readConfig, writeConfig } from '../config.js'
@@ -74,7 +75,7 @@ export async function startCommand(options: { port: number }): Promise<void> {
   // runMigrations has a WeakSet guard â€” safe even if autoInitFromEnv already ran it
   await runMigrations(db)
 
-  // Ensure at least one API key exists — generate a default admin key on first start
+  // Ensure at least one API key exists ï¿½ generate a default admin key on first start
   await ensureDefaultApiKey(db, config.companyId)
 
   // Initialize core services
@@ -91,8 +92,11 @@ export async function startCommand(options: { port: number }): Promise<void> {
   // GovernanceEngine enforces policies before adapter execution
   const governance = new GovernanceEngine(db)
 
+  // QuotaManager enforces time-windowed provider-level quotas
+  const quotaManager = new QuotaManager(db)
+
   // HeartbeatExecutor is the single source of truth for heartbeat_run records
-  const executor = new HeartbeatExecutor(db, costTracker, observatory, adapterRegistry, governance)
+  const executor = new HeartbeatExecutor(db, costTracker, observatory, adapterRegistry, governance, quotaManager)
 
   // Scheduler wraps executor with coalescing and cron scheduling
   const scheduler = new Scheduler(db, (agentId, trigger) =>
@@ -281,7 +285,7 @@ async function ensureDefaultApiKey(db: DatabaseProvider, companyId: string): Pro
 
     Authorization: Bearer ${plainKey}
 
-  Save this key — it will NOT be shown again.
+  Save this key ï¿½ it will NOT be shown again.
   =====================================================================
   `)
 }

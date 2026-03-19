@@ -3,8 +3,11 @@
  */
 export const VERSION = '0.1.0'
 
-export { GovernanceEngine, RateLimiter } from './governance/index.js'
+export { GovernanceEngine } from './governance/index.js'
 export type { PolicyCheckResult } from './governance/index.js'
+
+export { QuotaManager } from './quota/index.js'
+export type { QuotaCheckResult } from './quota/index.js'
 
 export { ContextBuilder } from './context-builder.js'
 

@@ -281,3 +281,21 @@ export interface HeartbeatRunEvent {
   payload: Record<string, unknown> | null
   created_at: string
 }
+
+export interface QuotaWindow {
+  id: string
+  company_id: string
+  agent_id: string | null
+  provider: string | null
+  window_duration: string
+  max_requests: number | null
+  max_tokens: number | null
+  created_at: string
+}
+
+export interface QuotaStatus {
+  quota: QuotaWindow
+  current_requests: number
+  current_tokens: number
+  exceeded: boolean
+}
