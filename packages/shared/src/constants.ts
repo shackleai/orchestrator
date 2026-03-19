@@ -219,3 +219,18 @@ export const WebSocketEventType = {
 } as const
 export type WebSocketEventType =
   (typeof WebSocketEventType)[keyof typeof WebSocketEventType]
+
+// ---------------------------------------------------------------------------
+// LLM Provider
+// ---------------------------------------------------------------------------
+
+export const LlmProvider = {
+  OpenAI: 'openai',
+  Anthropic: 'anthropic',
+  Google: 'google',
+  Mistral: 'mistral',
+  Groq: 'groq',
+  Ollama: 'ollama',
+  OpenRouter: 'openrouter',
+} as const
+export type LlmProvider = (typeof LlmProvider)[keyof typeof LlmProvider]

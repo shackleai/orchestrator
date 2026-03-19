@@ -30,6 +30,7 @@ export interface Agent {
   adapter_config: Record<string, unknown>
   budget_monthly_cents: number
   spent_monthly_cents: number
+  llm_config_id: string | null
   last_heartbeat_at: Date | null
   created_at: Date
   updated_at: Date
@@ -577,6 +578,22 @@ export interface WakeupRequest {
   status: 'pending' | 'processed' | 'expired'
   created_at: string
   processed_at: string | null
+}
+
+// ---------------------------------------------------------------------------
+// LLM Configs -- per-company model configuration and provider management
+// ---------------------------------------------------------------------------
+
+export interface LlmConfig {
+  id: string
+  company_id: string
+  provider: string
+  model: string
+  is_default: boolean
+  max_tokens: number | null
+  temperature: number | null
+  created_at: Date
+  updated_at: Date
 }
 
 // ---------------------------------------------------------------------------

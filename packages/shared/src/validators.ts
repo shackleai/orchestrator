@@ -20,6 +20,7 @@ import {
   WorkProductType,
   FinanceEventType,
   WorkspaceOperationType,
+  LlmProvider,
 } from './constants.js'
 
 // ---------------------------------------------------------------------------
@@ -80,6 +81,7 @@ export const CreateAgentInput = z.object({
   adapter_type: z.enum(adapterTypeValues).default(AdapterType.Process),
   adapter_config: z.record(z.string(), z.unknown()).optional().default({}),
   budget_monthly_cents: z.number().int().min(0).optional().default(0),
+  llm_config_id: uuid.nullable().optional(),
 })
 export type CreateAgentInput = z.infer<typeof CreateAgentInput>
 
@@ -93,6 +95,7 @@ export const UpdateAgentInput = z.object({
   adapter_type: z.enum(adapterTypeValues).optional(),
   adapter_config: z.record(z.string(), z.unknown()).optional(),
   budget_monthly_cents: z.number().int().min(0).optional(),
+  llm_config_id: uuid.nullable().optional(),
 })
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>
 
@@ -589,3 +592,27 @@ export const CreateWorkspaceOperationInput = z.object({
   details: z.record(z.string(), z.unknown()).optional().default({}),
 })
 export type CreateWorkspaceOperationInput = z.infer<typeof CreateWorkspaceOperationInput>
+
+// ---------------------------------------------------------------------------
+// LLM Config
+// ---------------------------------------------------------------------------
+
+const llmProviderValues = Object.values(LlmProvider) as [string, ...string[]]
+
+export const CreateLlmConfigInput = z.object({
+  provider: z.enum(llmProviderValues),
+  model: nonEmpty,
+  is_default: z.boolean().optional().default(false),
+  max_tokens: z.number().int().min(1).nullable().optional(),
+  temperature: z.number().min(0).max(2).nullable().optional(),
+})
+export type CreateLlmConfigInput = z.infer<typeof CreateLlmConfigInput>
+
+export const UpdateLlmConfigInput = z.object({
+  provider: z.enum(llmProviderValues).optional(),
+  model: nonEmpty.optional(),
+  is_default: z.boolean().optional(),
+  max_tokens: z.number().int().min(1).nullable().optional(),
+  temperature: z.number().min(0).max(2).nullable().optional(),
+})
+export type UpdateLlmConfigInput = z.infer<typeof UpdateLlmConfigInput>
