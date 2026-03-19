@@ -43,6 +43,7 @@ export const AdapterType = {
   Cursor: 'cursor',
   Gemini: 'gemini',
   Kiro: 'kiro',
+  OpenCode: 'opencode',
 } as const
 export type AdapterType = (typeof AdapterType)[keyof typeof AdapterType]
 

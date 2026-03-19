@@ -13,6 +13,7 @@ export { CodexAdapter } from './codex.js'
 export { CursorAdapter } from './cursor.js'
 export { GeminiAdapter } from './gemini.js'
 export { KiroAdapter } from './kiro.js'
+export { OpenCodeAdapter } from './opencode.js'
 export { getLastSessionState, saveSessionState } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
@@ -26,6 +27,7 @@ import { CodexAdapter } from './codex.js'
 import { CursorAdapter } from './cursor.js'
 import { GeminiAdapter } from './gemini.js'
 import { KiroAdapter } from './kiro.js'
+import { OpenCodeAdapter } from './opencode.js'
 
 /**
  * AdapterRegistry — maps adapter_type strings to AdapterModule instances.
@@ -46,6 +48,7 @@ export class AdapterRegistry {
     this.register(new CursorAdapter())
     this.register(new GeminiAdapter())
     this.register(new KiroAdapter())
+    this.register(new OpenCodeAdapter())
   }
 
   /** Register an adapter module. Overwrites any existing adapter with the same type. */
