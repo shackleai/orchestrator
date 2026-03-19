@@ -71,3 +71,13 @@ export {
   clearTemplateCache,
 } from './templates/index.js'
 export type { TemplateImportResult } from './templates/index.js'
+
+export { createStorageProvider, LocalDiskProvider, S3Provider } from './storage/index.js'
+export type {
+  StorageProvider,
+  StorageConfig,
+  LocalDiskConfig,
+  S3Config,
+  UploadResult,
+  DownloadResult,
+} from './storage/index.js'
