@@ -76,10 +76,17 @@ export function membershipsRouter(db: DatabaseProvider): Hono<{ Variables: Varia
   })
 
   // -------------------------------------------------------------------------
-  // GET /:id/members — list company members
+  // GET /:id/members — list company members (members and above only)
   // -------------------------------------------------------------------------
   app.get('/:id/members', companyScope, humanAuth, async (c) => {
     const company = c.get('company')
+    const userId = c.get('userId')
+
+    // Require caller to be at least a member of the company
+    const callerMembership = await getCallerMembership(db, company.id, userId)
+    if (!callerMembership) {
+      return c.json({ error: 'Forbidden — you must be a member of this company' }, 403)
+    }
 
     const result = await db.query<CompanyMembership & { user_name: string; user_email: string }>(
       `SELECT cm.*, u.name as user_name, u.email as user_email
@@ -129,7 +136,7 @@ export function membershipsRouter(db: DatabaseProvider): Hono<{ Variables: Varia
 
     // Check if user is already a member
     const existingMember = await db.query(
-      `SELECT id FROM company_memberships cm
+      `SELECT cm.id FROM company_memberships cm
        JOIN users u ON u.id = cm.user_id
        WHERE cm.company_id = $1 AND u.email = $2`,
       [company.id, email.toLowerCase()],
