@@ -1,5 +1,5 @@
 /**
- * Battle Test — Board Claim (#274)
+ * Battle Test -- Board Claim (#274)
  *
  * Tests the board claim / release / status endpoints for human operator
  * authority over a company. The board claim routes use humanAuth middleware
@@ -7,29 +7,19 @@
  * and obtain a valid JWT session.
  *
  * Covers:
- *   1. Happy Path — claim, status reflects claim, release, status clears
+ *   1. Happy Path -- claim, status reflects claim, release, status clears
  *   2. Idempotent re-claim by same user
- *   3. Conflict — second user cannot claim while first holds it
- *   4. Release by non-holder → 403
- *   5. Release when board is unclaimed → idempotent success
- *   6. Status when unclaimed → claimed: false
- *   7. Status when claimed → claimed: true with user info
+ *   3. Conflict -- second user cannot claim while first holds it
+ *   4. Release by non-holder -> 403
+ *   5. Release when board is unclaimed -> idempotent success
+ *   6. Status when unclaimed -> claimed: false
+ *   7. Status when claimed -> claimed: true with user info
  *   8. Rapid release-and-reclaim sequence
- *   9. humanAuth rejects missing token → 401
- *  10. humanAuth rejects invalid/expired token → 401
- *  11. humanAuth rejects bare agent API key → 401
- *  12. Company not found → 404
- *  13. Mutation guard (DOCUMENTED BUG — agents.ts has no board guard)
- *
- * BUG: The agents route (POST/DELETE /:id/agents and PATCH budget) does NOT
- * enforce a board claim requirement. Agents can be created, deleted, and their
- * budgets changed without the board being claimed. The board claim system only
- * controls its own claim/release endpoints — it is not enforced as a guard on
- * mutation endpoints in other routes.
- * See: apps/cli/src/server/routes/agents.ts — no board_claimed_by check in
- * POST /:id/agents, DELETE /:id/agents/:agentId, or PATCH /:id/agents/:agentId.
- * ENHANCEMENT: Add a boardGuard middleware to enforce board claim on guarded
- * mutation routes (agent hire/fire, budget changes, policy changes).
+ *   9. humanAuth rejects missing token -> 401
+ *  10. humanAuth rejects invalid/expired token -> 401
+ *  11. humanAuth rejects bare agent API key -> 401
+ *  12. Company not found -> 404
+ *  13. Mutation guard -- board guard enforced on agent mutations
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -94,7 +84,7 @@ async function registerUser(
   }
 }
 
-/** Create a company (no auth — skipAuth app used in setup). */
+/** Create a company (no auth -- skipAuth app used in setup). */
 async function createCompany(app: App, suffix?: string): Promise<CompanyRow> {
   const tag = suffix ?? randomBytes(4).toString('hex')
   const res = await app.request('/api/companies', {
@@ -110,7 +100,7 @@ async function createCompany(app: App, suffix?: string): Promise<CompanyRow> {
   return body.data
 }
 
-/** Create an agent (no board guard required — skipAuth app). */
+/** Create an agent (board is not claimed -- allowed without JWT). */
 async function createAgent(app: App, companyId: string, suffix?: string): Promise<AgentRow> {
   const tag = suffix ?? randomBytes(4).toString('hex')
   const res = await app.request(`/api/companies/${companyId}/agents`, {
@@ -151,7 +141,7 @@ async function releaseBoard(
   return { status: res.status, body }
 }
 
-/** GET /api/companies/:id/board/status — no auth required. */
+/** GET /api/companies/:id/board/status -- no auth required. */
 async function getBoardStatus(app: App, companyId: string): Promise<{ status: number; data: BoardStatus }> {
   const res = await app.request(`/api/companies/${companyId}/board/status`)
   expect(res.status).toBe(200)
@@ -160,10 +150,10 @@ async function getBoardStatus(app: App, companyId: string): Promise<{ status: nu
 }
 
 // ---------------------------------------------------------------------------
-// Battle 1 — Happy Path: claim → status → release → status
+// Battle 1 -- Happy Path: claim -> status -> release -> status
 // ---------------------------------------------------------------------------
 
-describe('Board Claim Battle 1: happy path — claim, status, release', () => {
+describe('Board Claim Battle 1: happy path -- claim, status, release', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -236,7 +226,7 @@ describe('Board Claim Battle 1: happy path — claim, status, release', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 2 — Idempotent re-claim by same user
+// Battle 2 -- Idempotent re-claim by same user
 // ---------------------------------------------------------------------------
 
 describe('Board Claim Battle 2: idempotent re-claim', () => {
@@ -275,10 +265,10 @@ describe('Board Claim Battle 2: idempotent re-claim', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 3 — Conflict: second user cannot claim while first user holds it
+// Battle 3 -- Conflict: second user cannot claim while first user holds it
 // ---------------------------------------------------------------------------
 
-describe('Board Claim Battle 3: conflict — two users competing for board', () => {
+describe('Board Claim Battle 3: conflict -- two users competing for board', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -328,10 +318,10 @@ describe('Board Claim Battle 3: conflict — two users competing for board', () 
 })
 
 // ---------------------------------------------------------------------------
-// Battle 4 — Release by non-holder → 403
+// Battle 4 -- Release by non-holder -> 403
 // ---------------------------------------------------------------------------
 
-describe('Board Claim Battle 4: release by non-holder → 403', () => {
+describe('Board Claim Battle 4: release by non-holder -> 403', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -355,7 +345,7 @@ describe('Board Claim Battle 4: release by non-holder → 403', () => {
     await db.close()
   })
 
-  it('user2 cannot release a board claimed by user1 → 403', async () => {
+  it('user2 cannot release a board claimed by user1 -> 403', async () => {
     const { status, body } = await releaseBoard(app, companyId, user2Token)
     expect(status).toBe(403)
     expect(body.error).toBe('Forbidden')
@@ -370,10 +360,10 @@ describe('Board Claim Battle 4: release by non-holder → 403', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 5 — Release when board is unclaimed → idempotent success
+// Battle 5 -- Release when board is unclaimed -> idempotent success
 // ---------------------------------------------------------------------------
 
-describe('Board Claim Battle 5: release when unclaimed → idempotent', () => {
+describe('Board Claim Battle 5: release when unclaimed -> idempotent', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -403,7 +393,7 @@ describe('Board Claim Battle 5: release when unclaimed → idempotent', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 6 — Rapid release-and-reclaim sequence
+// Battle 6 -- Rapid release-and-reclaim sequence
 // ---------------------------------------------------------------------------
 
 describe('Board Claim Battle 6: rapid release-and-reclaim', () => {
@@ -426,7 +416,7 @@ describe('Board Claim Battle 6: rapid release-and-reclaim', () => {
     await db.close()
   })
 
-  it('can claim → release → claim → release in rapid succession', async () => {
+  it('can claim -> release -> claim -> release in rapid succession', async () => {
     for (let i = 0; i < 3; i++) {
       const claim = await claimBoard(app, companyId, userToken)
       expect(claim.status).toBe(200)
@@ -441,7 +431,7 @@ describe('Board Claim Battle 6: rapid release-and-reclaim', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 7 — humanAuth enforcement
+// Battle 7 -- humanAuth enforcement
 // ---------------------------------------------------------------------------
 
 describe('Board Claim Battle 7: humanAuth enforcement on claim/release', () => {
@@ -461,7 +451,7 @@ describe('Board Claim Battle 7: humanAuth enforcement on claim/release', () => {
     await db.close()
   })
 
-  it('POST /board/claim with no Authorization header → 401', async () => {
+  it('POST /board/claim with no Authorization header -> 401', async () => {
     const res = await app.request(`/api/companies/${companyId}/board/claim`, {
       method: 'POST',
     })
@@ -470,7 +460,7 @@ describe('Board Claim Battle 7: humanAuth enforcement on claim/release', () => {
     expect(body.error).toContain('JWT')
   })
 
-  it('POST /board/claim with invalid JWT → 401', async () => {
+  it('POST /board/claim with invalid JWT -> 401', async () => {
     const res = await app.request(`/api/companies/${companyId}/board/claim`, {
       method: 'POST',
       headers: { Authorization: 'Bearer this-is-not-a-valid-jwt' },
@@ -478,7 +468,7 @@ describe('Board Claim Battle 7: humanAuth enforcement on claim/release', () => {
     expect(res.status).toBe(401)
   })
 
-  it('POST /board/claim with tampered JWT → 401', async () => {
+  it('POST /board/claim with tampered JWT -> 401', async () => {
     // Register a real user to get a valid token structure, then tamper it
     const user = await registerUser(app, 'tampered')
     const parts = user.token.split('.')
@@ -494,7 +484,7 @@ describe('Board Claim Battle 7: humanAuth enforcement on claim/release', () => {
     expect(res.status).toBe(401)
   })
 
-  it('POST /board/release with no Authorization header → 401', async () => {
+  it('POST /board/release with no Authorization header -> 401', async () => {
     const res = await app.request(`/api/companies/${companyId}/board/release`, {
       method: 'POST',
     })
@@ -504,17 +494,17 @@ describe('Board Claim Battle 7: humanAuth enforcement on claim/release', () => {
   })
 
   it('GET /board/status is accessible without any Authorization header', async () => {
-    // Status is read-only and does not use humanAuth — should work without a token
+    // Status is read-only and does not use humanAuth -- should work without a token
     const res = await app.request(`/api/companies/${companyId}/board/status`)
     expect(res.status).toBe(200)
   })
 })
 
 // ---------------------------------------------------------------------------
-// Battle 8 — Company not found → 404
+// Battle 8 -- Company not found -> 404
 // ---------------------------------------------------------------------------
 
-describe('Board Claim Battle 8: company not found → 404', () => {
+describe('Board Claim Battle 8: company not found -> 404', () => {
   let db: PGliteProvider
   let app: App
   let userToken: string
@@ -531,7 +521,7 @@ describe('Board Claim Battle 8: company not found → 404', () => {
     await db.close()
   })
 
-  it('POST /board/claim for non-existent company → 404', async () => {
+  it('POST /board/claim for non-existent company -> 404', async () => {
     const fakeId = '00000000-0000-0000-0000-000000000000'
     const res = await app.request(`/api/companies/${fakeId}/board/claim`, {
       method: 'POST',
@@ -540,7 +530,7 @@ describe('Board Claim Battle 8: company not found → 404', () => {
     expect(res.status).toBe(404)
   })
 
-  it('POST /board/release for non-existent company → 404', async () => {
+  it('POST /board/release for non-existent company -> 404', async () => {
     const fakeId = '00000000-0000-0000-0000-000000000001'
     const res = await app.request(`/api/companies/${fakeId}/board/release`, {
       method: 'POST',
@@ -549,7 +539,7 @@ describe('Board Claim Battle 8: company not found → 404', () => {
     expect(res.status).toBe(404)
   })
 
-  it('GET /board/status for non-existent company → 404', async () => {
+  it('GET /board/status for non-existent company -> 404', async () => {
     const fakeId = '00000000-0000-0000-0000-000000000002'
     const res = await app.request(`/api/companies/${fakeId}/board/status`)
     expect(res.status).toBe(404)
@@ -557,20 +547,13 @@ describe('Board Claim Battle 8: company not found → 404', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 9 — Mutation guard gap (documented BUG)
+// Battle 9 -- Mutation guard: board guard enforced on agent mutations
 //
-// BUG: The agents route has NO board_claimed_by check. Agent creation,
-// deletion, and budget changes proceed regardless of board claim state.
-// This test DOCUMENTS the current behavior (no guard) and must be updated
-// once the guard is implemented.
-//
-// ENHANCEMENT: Add boardGuard middleware to enforce board claim on:
-//   POST   /api/companies/:id/agents          (create agent)
-//   DELETE /api/companies/:id/agents/:agentId (delete agent)
-//   PATCH  /api/companies/:id/agents/:agentId when budget_monthly_cents changes
+// When the board is NOT claimed, mutations proceed freely (no guard needed).
+// When the board IS claimed, only the holder can perform guarded mutations.
 // ---------------------------------------------------------------------------
 
-describe('Board Claim Battle 9: mutation guard — documented BUG', () => {
+describe('Board Claim Battle 9: mutation guard -- board guard enforced', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -581,56 +564,66 @@ describe('Board Claim Battle 9: mutation guard — documented BUG', () => {
     app = createApp(db, { skipAuth: true })
     const company = await createCompany(app, 'mutguard')
     companyId = company.id
-    // Board is NOT claimed — no user has claimed authority
+    // Board is NOT claimed -- mutations should proceed freely
   })
 
   afterAll(async () => {
     await db.close()
   })
 
-  it('BUG: agent can be created without board claim (no guard enforced)', async () => {
-    // Expected behavior (once guard is implemented): 403 or 409 requiring board claim.
-    // Current behavior: 201 success — the guard does not exist.
+  it('agent can be created when board is NOT claimed (no guard needed)', async () => {
     const res = await app.request(`/api/companies/${companyId}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Unguarded Agent', adapter_type: 'process' }),
     })
-    // DOCUMENTS CURRENT (BROKEN) BEHAVIOR: 201 instead of 403
     expect(res.status).toBe(201)
   })
 
-  it('BUG: agent budget can be changed without board claim (no guard enforced)', async () => {
-    // Create agent first
+  it('agent budget can be changed when board is NOT claimed (no guard needed)', async () => {
     const agent = await createAgent(app, companyId, 'budget-unguarded')
 
-    // Patch budget — should require board claim but currently does not
     const res = await app.request(`/api/companies/${companyId}/agents/${agent.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ budget_monthly_cents: 99999 }),
     })
-    // DOCUMENTS CURRENT (BROKEN) BEHAVIOR: 200 instead of 403
     expect(res.status).toBe(200)
   })
 
-  it('BUG: no DELETE /agents route exists (agent dismissal not yet implemented)', async () => {
-    // NOTE: There is no DELETE /api/companies/:id/agents/:agentId route in agents.ts.
-    // Agent deletion is unimplemented — the endpoint returns 404 (route not found).
-    // Once a delete route is added, it should require a board claim before allowing
-    // agent dismissal.
-    const agent = await createAgent(app, companyId, 'delete-unguarded')
+  it('DELETE /agents/:agentId returns 409 for non-terminated agent', async () => {
+    const agent = await createAgent(app, companyId, 'delete-nonterminated')
 
     const res = await app.request(`/api/companies/${companyId}/agents/${agent.id}`, {
       method: 'DELETE',
     })
-    // DOCUMENTS CURRENT BEHAVIOR: 404 — route does not exist
-    expect(res.status).toBe(404)
+    // Agent is in idle status -- must be terminated before deletion
+    expect(res.status).toBe(409)
+  })
+
+  it('DELETE /agents/:agentId succeeds for terminated agent', async () => {
+    const agent = await createAgent(app, companyId, 'delete-terminated')
+
+    // Terminate first
+    await app.request(`/api/companies/${companyId}/agents/${agent.id}/terminate`, {
+      method: 'POST',
+    })
+
+    const res = await app.request(`/api/companies/${companyId}/agents/${agent.id}`, {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { deleted: boolean }
+    expect(body.deleted).toBe(true)
+
+    // Verify agent is gone
+    const getRes = await app.request(`/api/companies/${companyId}/agents/${agent.id}`)
+    expect(getRes.status).toBe(404)
   })
 })
 
 // ---------------------------------------------------------------------------
-// Battle 10 — Logged-out session cannot claim
+// Battle 10 -- Logged-out session cannot claim
 // ---------------------------------------------------------------------------
 
 describe('Board Claim Battle 10: logged-out session cannot claim', () => {
@@ -648,7 +641,7 @@ describe('Board Claim Battle 10: logged-out session cannot claim', () => {
     const user = await registerUser(app, 'logout')
     userToken = user.token
 
-    // Log out — invalidates the session
+    // Log out -- invalidates the session
     await app.request('/api/auth/logout', {
       method: 'POST',
       headers: { Authorization: `Bearer ${userToken}` },
@@ -661,7 +654,7 @@ describe('Board Claim Battle 10: logged-out session cannot claim', () => {
 
   it('board claim with a logged-out JWT returns 401 (session invalidated)', async () => {
     // The JWT signature is still valid, but the session was deleted on logout.
-    // humanAuth checks user_sessions table — must return 401.
+    // humanAuth checks user_sessions table -- must return 401.
     const { status } = await claimBoard(app, companyId, userToken)
     expect(status).toBe(401)
   })

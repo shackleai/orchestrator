@@ -1,5 +1,5 @@
 /**
- * Battle Test — Agent Lifecycle (#267)
+ * Battle Test -- Agent Lifecycle (#267)
  *
  * Comprehensive coverage for agent lifecycle scenarios NOT already covered
  * by agents.test.ts, agent-cmd.test.ts, or e2e-battle.test.ts Battle 10.
@@ -7,15 +7,15 @@
  * Covers:
  *   1. Create agent for all 11 adapter types
  *   2. Create agent with all optional fields populated
- *   3. Config revisions — PATCH creates a new revision
+ *   3. Config revisions -- PATCH creates a new revision
  *   4. Rollback to previous revision
  *   5. Rollback to oldest revision (multi-revision chain)
- *   6. Rapid pause/resume toggling
- *   7. Terminate already-terminated agent
- *   8. Create agent with invalid adapter type → 400
- *   9. Revisions list — empty, then populated
- *  10. Rollback → non-existent revision → 404
- *  11. Revisions list → non-existent agent → 404
+ *   6. Rapid pause/resume toggling (with state machine guards)
+ *   7. Terminate already-terminated agent (state machine guard)
+ *   8. Create agent with invalid adapter type -> 400
+ *   9. Revisions list -- empty, then populated
+ *  10. Rollback -> non-existent revision -> 404
+ *  11. Revisions list -> non-existent agent -> 404
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -119,7 +119,7 @@ async function getRevisions(
 // 1. All 11 Adapter Types
 // ---------------------------------------------------------------------------
 
-describe('Battle 13A: create agent — all 11 adapter types', () => {
+describe('Battle 13A: create agent -- all 11 adapter types', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -153,7 +153,6 @@ describe('Battle 13A: create agent — all 11 adapter types', () => {
     expect(ALL_ADAPTERS).toHaveLength(11)
     const adapterValues = Object.values(AdapterType)
     expect(adapterValues).toHaveLength(11)
-    // Every enum value is in our test array
     adapterValues.forEach((v) => expect(ALL_ADAPTERS).toContain(v))
   })
 
@@ -175,7 +174,6 @@ describe('Battle 13A: create agent — all 11 adapter types', () => {
       expect(body.data.name).toBe(`${adapterType} Agent`)
       expect(body.data.id).toBeTruthy()
 
-      // Verify persisted via GET
       const getRes = await app.request(
         `/api/companies/${companyId}/agents/${body.data.id}`,
       )
@@ -200,7 +198,7 @@ describe('Battle 13A: create agent — all 11 adapter types', () => {
 // 2. Create Agent with All Optional Fields
 // ---------------------------------------------------------------------------
 
-describe('Battle 13B: create agent — all optional fields populated', () => {
+describe('Battle 13B: create agent -- all optional fields populated', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -212,7 +210,6 @@ describe('Battle 13B: create agent — all optional fields populated', () => {
     app = createApp(db, { skipAuth: true })
     companyId = await createCompany(app, 'Full Fields Corp')
 
-    // Create a manager agent to reference in reports_to
     const manager = await createAgent(app, companyId, { name: 'Manager Agent' })
     managerId = manager.id
   })
@@ -252,7 +249,6 @@ describe('Battle 13B: create agent — all optional fields populated', () => {
     expect(body.data.budget_monthly_cents).toBe(9999)
     expect(body.data.status).toBe(AgentStatus.Idle)
 
-    // Cross-verify via detail endpoint
     const detail = await app.request(
       `/api/companies/${companyId}/agents/${body.data.id}`,
     )
@@ -279,10 +275,10 @@ describe('Battle 13B: create agent — all optional fields populated', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 3. Config Revisions — PATCH Creates New Revision
+// 3-5: Config Revisions and Rollback (unchanged from original)
 // ---------------------------------------------------------------------------
 
-describe('Battle 13C: config revisions — PATCH creates revision', () => {
+describe('Battle 13C: config revisions -- PATCH creates revision', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -319,11 +315,10 @@ describe('Battle 13C: config revisions — PATCH creates revision', () => {
     expect(data[0].revision_number).toBe(1)
     expect(data[0].agent_id).toBe(agentId)
 
-    // Snapshot must capture the PRE-update state
     const snapshot = typeof data[0].config_snapshot === 'string'
       ? JSON.parse(data[0].config_snapshot as unknown as string)
       : data[0].config_snapshot
-    expect(snapshot.name).toBe('Revision Subject') // original name
+    expect(snapshot.name).toBe('Revision Subject')
   })
 
   it('second PATCH creates revision 2, revisions ordered DESC by revision_number', async () => {
@@ -334,7 +329,6 @@ describe('Battle 13C: config revisions — PATCH creates revision', () => {
 
     const { data } = await getRevisions(app, companyId, agentId)
     expect(data).toHaveLength(2)
-    // Ordered DESC — revision 2 first
     expect(data[0].revision_number).toBe(2)
     expect(data[1].revision_number).toBe(1)
   })
@@ -348,7 +342,6 @@ describe('Battle 13C: config revisions — PATCH creates revision', () => {
 
     const { data } = await getRevisions(app, companyId, agentId)
     expect(data).toHaveLength(3)
-    // Most recent revision (desc order)
     expect(data[0].revision_number).toBe(3)
     expect(data[0].change_reason).toBe('Prod incident hotfix')
     expect(data[0].changed_by).toBe('on-call-engineer')
@@ -374,7 +367,6 @@ describe('Battle 13C: config revisions — PATCH creates revision', () => {
   })
 
   it('PATCH with no actual field changes does not create a new revision', async () => {
-    // Sending an empty body — no fields to change
     const res = await app.request(`/api/companies/${companyId}/agents/${agentId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -382,15 +374,10 @@ describe('Battle 13C: config revisions — PATCH creates revision', () => {
     })
     expect(res.status).toBe(200)
 
-    // Revision count should remain 3
     const { data } = await getRevisions(app, companyId, agentId)
     expect(data).toHaveLength(3)
   })
 })
-
-// ---------------------------------------------------------------------------
-// 4. Rollback to Previous Config Revision
-// ---------------------------------------------------------------------------
 
 describe('Battle 13D: rollback to previous config revision', () => {
   let db: PGliteProvider
@@ -405,24 +392,20 @@ describe('Battle 13D: rollback to previous config revision', () => {
     app = createApp(db, { skipAuth: true })
     companyId = await createCompany(app, 'Rollback Corp')
 
-    // Create agent → patch twice to create 2 revisions
     const agent = await createAgent(app, companyId, {
       name: 'Rollback Subject',
       capabilities: 'original-capability',
     })
     agentId = agent.id
 
-    // Patch 1: creates revision 1 (snapshot of original)
     await patchAgent(app, companyId, agentId, {
       name: 'Rollback Subject v2',
       capabilities: 'updated-capability',
     })
 
-    // Capture revision 1 id
     const revsAfterPatch1 = await getRevisions(app, companyId, agentId)
-    revision1Id = revsAfterPatch1.data[0].id // desc order, so [0] = revision 1
+    revision1Id = revsAfterPatch1.data[0].id
 
-    // Patch 2: creates revision 2
     await patchAgent(app, companyId, agentId, {
       name: 'Rollback Subject v3',
       capabilities: 'third-capability',
@@ -444,20 +427,14 @@ describe('Battle 13D: rollback to previous config revision', () => {
       data: { agent: AgentRow; rolled_back_to: number }
     }
 
-    // rolled_back_to should match the revision number
     expect(body.data.rolled_back_to).toBe(1)
-
-    // Agent should reflect the snapshot stored at revision 1 (pre-patch-1 state)
     expect(body.data.agent.name).toBe('Rollback Subject')
     expect(body.data.agent.capabilities).toBe('original-capability')
   })
 
   it('rollback itself creates a new revision (audit trail preserved)', async () => {
     const { data } = await getRevisions(app, companyId, agentId)
-    // 2 existing + 1 pre-rollback snapshot = 3 total
     expect(data.length).toBeGreaterThanOrEqual(3)
-
-    // Most recent revision's change_reason should mention rollback
     expect(data[0].change_reason).toMatch(/[Rr]ollback/)
   })
 
@@ -471,7 +448,7 @@ describe('Battle 13D: rollback to previous config revision', () => {
     expect(body.data.capabilities).toBe('original-capability')
   })
 
-  it('rollback to non-existent revision → 404', async () => {
+  it('rollback to non-existent revision -> 404', async () => {
     const res = await app.request(
       `/api/companies/${companyId}/agents/${agentId}/rollback/00000000-0000-0000-0000-000000000000`,
       { method: 'POST' },
@@ -481,7 +458,7 @@ describe('Battle 13D: rollback to previous config revision', () => {
     expect(body.error).toBe('Revision not found')
   })
 
-  it('rollback for non-existent agent → 404', async () => {
+  it('rollback for non-existent agent -> 404', async () => {
     const res = await app.request(
       `/api/companies/${companyId}/agents/00000000-0000-0000-0000-000000000000/rollback/${revision1Id}`,
       { method: 'POST' },
@@ -491,10 +468,6 @@ describe('Battle 13D: rollback to previous config revision', () => {
     expect(body.error).toBe('Agent not found')
   })
 })
-
-// ---------------------------------------------------------------------------
-// 5. Rollback to Oldest Revision (Multi-Revision Chain)
-// ---------------------------------------------------------------------------
 
 describe('Battle 13E: rollback to oldest revision in a long chain', () => {
   let db: PGliteProvider
@@ -516,7 +489,6 @@ describe('Battle 13E: rollback to oldest revision in a long chain', () => {
     })
     agentId = agent.id
 
-    // Create a chain of 5 revisions
     for (let i = 1; i <= 5; i++) {
       await patchAgent(app, companyId, agentId, {
         name: `Chain Agent v${i}`,
@@ -525,9 +497,7 @@ describe('Battle 13E: rollback to oldest revision in a long chain', () => {
       })
     }
 
-    // Oldest revision = revision 1 (last in desc-sorted list)
     const { data } = await getRevisions(app, companyId, agentId)
-    // data is DESC order — oldest is at the end
     oldestRevisionId = data[data.length - 1].id
   })
 
@@ -538,7 +508,6 @@ describe('Battle 13E: rollback to oldest revision in a long chain', () => {
   it('5 PATCHes create 5 revisions', async () => {
     const { data } = await getRevisions(app, companyId, agentId)
     expect(data).toHaveLength(5)
-    // Revision numbers 1–5, desc order
     expect(data[0].revision_number).toBe(5)
     expect(data[data.length - 1].revision_number).toBe(1)
   })
@@ -561,13 +530,12 @@ describe('Battle 13E: rollback to oldest revision in a long chain', () => {
 
   it('revision list grows by 1 after rollback (pre-rollback snapshot saved)', async () => {
     const { data } = await getRevisions(app, companyId, agentId)
-    // 5 original + 1 pre-rollback = 6
     expect(data).toHaveLength(6)
   })
 })
 
 // ---------------------------------------------------------------------------
-// 6. Rapid Pause/Resume Toggling
+// 6. Rapid Pause/Resume Toggling (with state machine guards)
 // ---------------------------------------------------------------------------
 
 describe('Battle 13F: rapid pause/resume toggling', () => {
@@ -589,7 +557,7 @@ describe('Battle 13F: rapid pause/resume toggling', () => {
     await db.close()
   })
 
-  it('sequential pause → resume → pause → resume cycle all return correct status', async () => {
+  it('sequential pause -> resume -> pause -> resume cycle all return correct status', async () => {
     const actions = ['pause', 'resume', 'pause', 'resume'] as const
     const expectedStatuses = [
       AgentStatus.Paused,
@@ -611,7 +579,6 @@ describe('Battle 13F: rapid pause/resume toggling', () => {
 
   it('10 rapid sequential toggles converge to correct final state', async () => {
     // Start: idle (from previous test)
-    // 10 alternating toggles: p,r,p,r,p,r,p,r,p,r → ends on resume = idle
     for (let i = 0; i < 10; i++) {
       const action = i % 2 === 0 ? 'pause' : 'resume'
       const res = await app.request(
@@ -621,14 +588,14 @@ describe('Battle 13F: rapid pause/resume toggling', () => {
       expect(res.status).toBe(200)
     }
 
-    // 10 iterations (0-9), last iteration (9) is resume → idle
     const res = await app.request(`/api/companies/${companyId}/agents/${agentId}`)
     const body = (await res.json()) as { data: AgentRow }
     expect(body.data.status).toBe(AgentStatus.Idle)
   })
 
-  it('concurrent pause requests both succeed (last writer wins — idempotent)', async () => {
-    // Both pause → both should return 200, final state = paused
+  it('concurrent pause requests: one succeeds, other may get 409 (state guard)', async () => {
+    // Both try to pause from idle -- with state machine guard, one succeeds
+    // and the other may see the agent as already paused (409).
     const [r1, r2] = await Promise.all([
       app.request(`/api/companies/${companyId}/agents/${agentId}/pause`, {
         method: 'POST',
@@ -637,10 +604,10 @@ describe('Battle 13F: rapid pause/resume toggling', () => {
         method: 'POST',
       }),
     ])
-    expect(r1.status).toBe(200)
-    expect(r2.status).toBe(200)
+    const statuses = [r1.status, r2.status].sort()
+    expect(statuses).toContain(200)
+    expect([200, 409]).toContain(statuses[0])
 
-    // Drain both response bodies to avoid connection leaks
     await r1.json()
     await r2.json()
 
@@ -649,35 +616,35 @@ describe('Battle 13F: rapid pause/resume toggling', () => {
     expect(body.data.status).toBe(AgentStatus.Paused)
   })
 
-  it('pause on already-paused agent returns 200 and stays paused (idempotent)', async () => {
+  it('pause on already-paused agent returns 409 (state machine guard)', async () => {
     // Agent is already paused from the concurrent test above
     const res = await app.request(
       `/api/companies/${companyId}/agents/${agentId}/pause`,
       { method: 'POST' },
     )
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: AgentRow }
-    expect(body.data.status).toBe(AgentStatus.Paused)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Invalid state transition')
   })
 
-  it('resume on already-idle agent returns 200 and stays idle (idempotent)', async () => {
+  it('resume on already-idle agent returns 409 (state machine guard)', async () => {
     // First resume to idle
     await app.request(`/api/companies/${companyId}/agents/${agentId}/resume`, {
       method: 'POST',
     })
-    // Resume again — should be idempotent
+    // Resume again -- should be rejected (already idle)
     const res = await app.request(
       `/api/companies/${companyId}/agents/${agentId}/resume`,
       { method: 'POST' },
     )
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: AgentRow }
-    expect(body.data.status).toBe(AgentStatus.Idle)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Invalid state transition')
   })
 })
 
 // ---------------------------------------------------------------------------
-// 7. Terminate Already-Terminated Agent
+// 7. Terminate Already-Terminated Agent (state machine guard)
 // ---------------------------------------------------------------------------
 
 describe('Battle 13G: terminate already-terminated agent', () => {
@@ -709,17 +676,14 @@ describe('Battle 13G: terminate already-terminated agent', () => {
     expect(body.data.status).toBe(AgentStatus.Terminated)
   })
 
-  // BUG: The terminate route does a blind UPDATE — it does not reject double-termination.
-  // This test documents current behavior. If idempotency is desired, the route should
-  // check current status and return 409 or 200 explicitly.
-  it('second terminate on already-terminated agent returns 200 (idempotent behavior)', async () => {
+  it('second terminate on already-terminated agent returns 409 (state machine guard)', async () => {
     const res = await app.request(
       `/api/companies/${companyId}/agents/${agentId}/terminate`,
       { method: 'POST' },
     )
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: AgentRow }
-    expect(body.data.status).toBe(AgentStatus.Terminated)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Invalid state transition')
   })
 
   it('terminated agent is still retrievable via GET', async () => {
@@ -731,20 +695,20 @@ describe('Battle 13G: terminate already-terminated agent', () => {
     expect(body.data.status).toBe(AgentStatus.Terminated)
   })
 
-  it('can pause a terminated agent (no guard on transition — documents current behavior)', async () => {
-    // ENHANCEMENT: The route should guard against invalid state transitions.
-    // Currently pause on terminated succeeds — documenting this for a future guard.
+  it('pause on terminated agent returns 409 (state machine guard)', async () => {
     const res = await app.request(
       `/api/companies/${companyId}/agents/${agentId}/pause`,
       { method: 'POST' },
     )
-    // Whatever the status code, it should be consistent — not a server error
-    expect([200, 409, 422]).toContain(res.status)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string; detail: string }
+    expect(body.error).toBe('Invalid state transition')
+    expect(body.detail).toContain('terminated')
   })
 })
 
 // ---------------------------------------------------------------------------
-// 8. Invalid Adapter Type → 400
+// 8. Invalid Adapter Type -> 400
 // ---------------------------------------------------------------------------
 
 describe('Battle 13H: invalid adapter type on create', () => {
@@ -763,13 +727,13 @@ describe('Battle 13H: invalid adapter type on create', () => {
     await db.close()
   })
 
-  it('create agent with invalid adapter_type → 400 Validation failed', async () => {
+  it('create agent with invalid adapter_type -> 400 Validation failed', async () => {
     const res = await app.request(`/api/companies/${companyId}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Bad Adapter Agent',
-        adapter_type: 'puppeteer', // not a valid adapter
+        adapter_type: 'puppeteer',
       }),
     })
     expect(res.status).toBe(400)
@@ -777,7 +741,7 @@ describe('Battle 13H: invalid adapter type on create', () => {
     expect(body.error).toBe('Validation failed')
   })
 
-  it('create agent with adapter_type as empty string → 400', async () => {
+  it('create agent with adapter_type as empty string -> 400', async () => {
     const res = await app.request(`/api/companies/${companyId}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -789,14 +753,12 @@ describe('Battle 13H: invalid adapter type on create', () => {
     expect(res.status).toBe(400)
   })
 
-  it('create agent with adapter_type as null → uses default (process)', async () => {
-    // Zod schema has .default(AdapterType.Process) — null vs undefined differs by Zod version
+  it('create agent with adapter_type as null -> uses default (process)', async () => {
     const res = await app.request(`/api/companies/${companyId}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Null Adapter Agent',
-        // adapter_type omitted — triggers default
       }),
     })
     expect(res.status).toBe(201)
@@ -804,7 +766,7 @@ describe('Battle 13H: invalid adapter type on create', () => {
     expect(body.data.adapter_type).toBe(AdapterType.Process)
   })
 
-  it('PATCH agent with invalid adapter_type → 400', async () => {
+  it('PATCH agent with invalid adapter_type -> 400', async () => {
     const agent = await createAgent(app, companyId, { name: 'Patch Adapter Target' })
 
     const res = await app.request(`/api/companies/${companyId}/agents/${agent.id}`, {
@@ -817,7 +779,7 @@ describe('Battle 13H: invalid adapter type on create', () => {
     expect(body.error).toBe('Validation failed')
   })
 
-  it('create agent with numeric adapter_type → 400', async () => {
+  it('create agent with numeric adapter_type -> 400', async () => {
     const res = await app.request(`/api/companies/${companyId}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -831,7 +793,7 @@ describe('Battle 13H: invalid adapter type on create', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 9. Full Lifecycle: Create → Update (Revision) → Rollback → Terminate
+// 9. Full Lifecycle: Create -> Update (Revision) -> Rollback -> Terminate
 // ---------------------------------------------------------------------------
 
 describe('Battle 13I: complete agent lifecycle chain', () => {
@@ -850,7 +812,7 @@ describe('Battle 13I: complete agent lifecycle chain', () => {
     await db.close()
   })
 
-  it('completes full lifecycle: create → pause → resume → update (revision) → rollback → terminate', async () => {
+  it('completes full lifecycle: create -> pause -> resume -> update (revision) -> rollback -> terminate', async () => {
     // Step 1: Create
     const agent = await createAgent(app, companyId, {
       name: 'Full Lifecycle Agent',
@@ -875,7 +837,7 @@ describe('Battle 13I: complete agent lifecycle chain', () => {
     expect(resumeRes.status).toBe(200)
     expect(((await resumeRes.json()) as { data: AgentRow }).data.status).toBe(AgentStatus.Idle)
 
-    // Step 4: Update config — creates revision
+    // Step 4: Update config -- creates revision
     await patchAgent(app, companyId, agent.id, {
       name: 'Full Lifecycle Agent v2',
       capabilities: 'tools,memory,search',
@@ -909,7 +871,6 @@ describe('Battle 13I: complete agent lifecycle chain', () => {
 
     // Final state: terminated, restored config, audit trail intact
     const finalRevisions = await getRevisions(app, companyId, agent.id)
-    // 1 from PATCH + 1 pre-rollback = 2
     expect(finalRevisions.data.length).toBeGreaterThanOrEqual(2)
   })
 })

@@ -2,19 +2,110 @@
  * Agent CRUD + lifecycle routes — /api/companies/:id/agents
  */
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { createHash, randomBytes } from 'node:crypto'
 import type { DatabaseProvider } from '@shackleai/db'
-import type { Agent, AgentApiKey, AgentConfigRevision } from '@shackleai/shared'
+import type { Agent, AgentApiKey, AgentConfigRevision, Company } from '@shackleai/shared'
 import { CreateAgentInput, UpdateAgentInput, TriggerType } from '@shackleai/shared'
-import { AgentStatus, AgentApiKeyStatus } from '@shackleai/shared'
+import { AgentStatus, AgentApiKeyStatus, BoardGuardedMutation } from '@shackleai/shared'
 import type { Scheduler } from '@shackleai/core'
 import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
+import { verifyJwt } from './auth.js'
 import { parsePagination } from '../pagination.js'
 
 type Variables = CompanyScopeVariables
 
+// ---------------------------------------------------------------------------
+// State machine -- valid transitions for lifecycle actions
+// ---------------------------------------------------------------------------
+
+/** Statuses from which an agent may be paused. */
+const PAUSABLE_STATUSES: ReadonlySet<string> = new Set([AgentStatus.Idle, AgentStatus.Active])
+
+/** Statuses from which an agent may be resumed. */
+const RESUMABLE_STATUSES: ReadonlySet<string> = new Set([AgentStatus.Paused])
+
+// ---------------------------------------------------------------------------
+// Board guard helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if the company board is claimed. If claimed, extract the caller
+ * userId via JWT and verify they are the holder.
+ *
+ * Returns null if the operation is allowed, or a Response to short-circuit.
+ */
+async function checkBoardGuard(
+  c: Context<{ Variables: Variables }>,
+  company: Company,
+  mutationType: BoardGuardedMutation,
+  db: DatabaseProvider,
+): Promise<Response | null> {
+  if (!company.board_claimed_by) {
+    return null
+  }
+
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json(
+      {
+        error: 'Board authority required',
+        detail: `Mutation "${mutationType}" requires board authority. The board is currently claimed -- provide a valid JWT.`,
+      },
+      403,
+    )
+  }
+
+  const token = authHeader.slice('Bearer '.length).trim()
+  if (!token) {
+    return c.json(
+      {
+        error: 'Board authority required',
+        detail: `Mutation "${mutationType}" requires board authority. The board is currently claimed -- provide a valid JWT.`,
+      },
+      403,
+    )
+  }
+
+  const payload = verifyJwt(token)
+  if (!payload) {
+    return c.json(
+      {
+        error: 'Board authority required',
+        detail: `Mutation "${mutationType}" requires board authority. Invalid or expired token.`,
+      },
+      403,
+    )
+  }
+
+  const tokenHash = createHash('sha256').update(token).digest('hex')
+  const session = await db.query<{ id: string }>(
+    'SELECT id FROM user_sessions WHERE token_hash = $1 AND expires_at > NOW()',
+    [tokenHash],
+  )
+  if (session.rows.length === 0) {
+    return c.json(
+      {
+        error: 'Board authority required',
+        detail: `Mutation "${mutationType}" requires board authority. Session expired or invalidated.`,
+      },
+      403,
+    )
+  }
+
+  if (company.board_claimed_by !== payload.sub) {
+    return c.json(
+      {
+        error: 'Board authority required',
+        detail: `Mutation "${mutationType}" requires board authority. The board is currently claimed by another user.`,
+      },
+      403,
+    )
+  }
+
+  return null
+}
 
 /**
  * Snapshot the current agent config as a revision before updating.
@@ -55,13 +146,12 @@ async function createConfigRevision(
 export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>()
 
-  // Inject db into context for all routes
   app.use('*', async (c, next) => {
     c.set('db', db)
     return next()
   })
 
-  // GET /api/companies/:id/agents — list agents with status, budget, last_heartbeat_at
+  // GET /api/companies/:id/agents
   app.get('/:id/agents', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const { limit, offset } = parsePagination(c)
@@ -72,9 +162,14 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     return c.json({ data: result.rows })
   })
 
-  // POST /api/companies/:id/agents — create agent
+  // POST /api/companies/:id/agents -- create agent
   app.post('/:id/agents', companyScope, async (c) => {
     const companyId = c.req.param('id')
+
+    // Board guard
+    const createCompany = c.get('company')
+    const createGuard = await checkBoardGuard(c, createCompany, BoardGuardedMutation.AgentCreate, db)
+    if (createGuard) return createGuard
 
     let body: unknown
     try {
@@ -83,7 +178,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ error: 'Invalid JSON body' }, 400)
     }
 
-    // Inject company_id from the URL param so callers don't have to repeat it
     const parsed = CreateAgentInput.safeParse({ company_id: companyId, ...(body as object) })
     if (!parsed.success) {
       return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400)
@@ -99,9 +193,9 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       adapter_type,
       adapter_config,
       budget_monthly_cents,
+      llm_config_id,
     } = parsed.data
 
-    // Check if company requires approval for agent creation
     const company = c.get('company')
     const requireApproval = company.require_approval === true
 
@@ -122,6 +216,7 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
             adapter_type,
             adapter_config,
             budget_monthly_cents,
+            llm_config_id: llm_config_id ?? null,
           }),
           null,
         ],
@@ -136,8 +231,8 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     const result = await db.query<Agent>(
       `INSERT INTO agents
          (company_id, name, title, role, status, reports_to, capabilities,
-          adapter_type, adapter_config, budget_monthly_cents)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          adapter_type, adapter_config, budget_monthly_cents, llm_config_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         companyId,
@@ -150,13 +245,14 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
         adapter_type,
         JSON.stringify(adapter_config),
         budget_monthly_cents,
+        llm_config_id ?? null,
       ],
     )
 
     return c.json({ data: result.rows[0] }, 201)
   })
 
-  // GET /api/companies/:id/agents/:agentId — agent detail
+  // GET /api/companies/:id/agents/:agentId
   app.get('/:id/agents/:agentId', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
@@ -173,12 +269,16 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     return c.json({ data: result.rows[0] })
   })
 
-  // PATCH /api/companies/:id/agents/:agentId — update agent
+  // PATCH /api/companies/:id/agents/:agentId -- update agent
   app.patch('/:id/agents/:agentId', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
 
-    // Fetch full agent for revision snapshot
+    // Board guard
+    const patchCompany = c.get('company')
+    const patchGuard = await checkBoardGuard(c, patchCompany, BoardGuardedMutation.BudgetChange, db)
+    if (patchGuard) return patchGuard
+
     const existing = await db.query<Agent>(
       `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
@@ -210,7 +310,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ data: result.rows[0] })
     }
 
-    // Snapshot current config as a revision before applying changes
     const changeReason = (body as Record<string, unknown>)?.change_reason as string | undefined
     const changedBy = (body as Record<string, unknown>)?.changed_by as string | undefined
     await createConfigRevision(db, existing.rows[0], changedBy, changeReason)
@@ -238,7 +337,7 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     return c.json({ data: result.rows[0] })
   })
 
-  // GET /api/companies/:id/agents/:agentId/revisions -- list config revisions
+  // GET /api/companies/:id/agents/:agentId/revisions
   app.get('/:id/agents/:agentId/revisions', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
@@ -261,7 +360,7 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     return c.json({ data: result.rows })
   })
 
-  // POST /api/companies/:id/agents/:agentId/rollback/:revisionId -- rollback to a revision
+  // POST /api/companies/:id/agents/:agentId/rollback/:revisionId
   app.post('/:id/agents/:agentId/rollback/:revisionId', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
@@ -288,7 +387,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       ? JSON.parse(revision.config_snapshot) as Record<string, unknown>
       : revision.config_snapshot
 
-    // Snapshot current config before rollback
     await createConfigRevision(db, agentResult.rows[0], null, `Rollback to revision ${revision.revision_number}`)
 
     const result = await db.query<Agent>(
@@ -328,10 +426,29 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     })
   })
 
-  // POST /api/companies/:id/agents/:agentId/pause — set status='paused'
+  // POST /api/companies/:id/agents/:agentId/pause
   app.post('/:id/agents/:agentId/pause', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
+
+    const existing = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Agent not found' }, 404)
+    }
+
+    const current = existing.rows[0]
+    if (!PAUSABLE_STATUSES.has(current.status)) {
+      return c.json(
+        {
+          error: 'Invalid state transition',
+          detail: `Cannot pause agent in "${current.status}" status. Pause is only allowed from: ${[...PAUSABLE_STATUSES].join(', ')}.`,
+        },
+        409,
+      )
+    }
 
     const result = await db.query<Agent>(
       `UPDATE agents SET status = $1, updated_at = NOW()
@@ -340,17 +457,32 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       [AgentStatus.Paused, agentId, companyId],
     )
 
-    if (result.rows.length === 0) {
-      return c.json({ error: 'Agent not found' }, 404)
-    }
-
     return c.json({ data: result.rows[0] })
   })
 
-  // POST /api/companies/:id/agents/:agentId/resume — set status='idle'
+  // POST /api/companies/:id/agents/:agentId/resume
   app.post('/:id/agents/:agentId/resume', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
+
+    const existing = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Agent not found' }, 404)
+    }
+
+    const current = existing.rows[0]
+    if (!RESUMABLE_STATUSES.has(current.status)) {
+      return c.json(
+        {
+          error: 'Invalid state transition',
+          detail: `Cannot resume agent in "${current.status}" status. Resume is only allowed from: ${[...RESUMABLE_STATUSES].join(', ')}.`,
+        },
+        409,
+      )
+    }
 
     const result = await db.query<Agent>(
       `UPDATE agents SET status = $1, updated_at = NOW()
@@ -359,17 +491,32 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       [AgentStatus.Idle, agentId, companyId],
     )
 
-    if (result.rows.length === 0) {
-      return c.json({ error: 'Agent not found' }, 404)
-    }
-
     return c.json({ data: result.rows[0] })
   })
 
-  // POST /api/companies/:id/agents/:agentId/terminate — set status='terminated'
+  // POST /api/companies/:id/agents/:agentId/terminate
   app.post('/:id/agents/:agentId/terminate', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
+
+    const existing = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Agent not found' }, 404)
+    }
+
+    const current = existing.rows[0]
+    if (current.status === AgentStatus.Terminated) {
+      return c.json(
+        {
+          error: 'Invalid state transition',
+          detail: 'Agent is already terminated.',
+        },
+        409,
+      )
+    }
 
     const result = await db.query<Agent>(
       `UPDATE agents SET status = $1, updated_at = NOW()
@@ -378,19 +525,14 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       [AgentStatus.Terminated, agentId, companyId],
     )
 
-    if (result.rows.length === 0) {
-      return c.json({ error: 'Agent not found' }, 404)
-    }
-
     return c.json({ data: result.rows[0] })
   })
 
-  // POST /api/companies/:id/agents/:agentId/wakeup — on-demand heartbeat
+  // POST /api/companies/:id/agents/:agentId/wakeup
   app.post('/:id/agents/:agentId/wakeup', companyScope, async (c) => {
     const companyId = c.req.param('id') as string
     const agentId = c.req.param('agentId') as string
 
-    // Verify agent exists and belongs to company
     const agentResult = await db.query<Agent>(
       `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
@@ -400,7 +542,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ error: 'Agent not found' }, 404)
     }
 
-    // Pre-flight: check if required LLM key is configured for this adapter type
     const agent = agentResult.rows[0]
     const adapterType = agent.adapter_type
     const needsOpenAI = ['crewai', 'openclaw'].includes(adapterType)
@@ -408,18 +549,17 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
 
     if (needsOpenAI && !process.env.OPENAI_API_KEY) {
       return c.json({
-        error: 'OpenAI API key not configured. Go to Settings → LLM API Keys and add your OpenAI key, then restart the server.',
+        error: 'OpenAI API key not configured. Go to Settings \u2192 LLM API Keys and add your OpenAI key, then restart the server.',
         code: 'MISSING_LLM_KEY',
       }, 400)
     }
     if (needsAnthropic && !process.env.ANTHROPIC_API_KEY) {
       return c.json({
-        error: 'Anthropic API key not configured. Go to Settings → LLM API Keys and add your Anthropic key, then restart the server.',
+        error: 'Anthropic API key not configured. Go to Settings \u2192 LLM API Keys and add your Anthropic key, then restart the server.',
         code: 'MISSING_LLM_KEY',
       }, 400)
     }
 
-    // If no scheduler is available, fall back to just updating the timestamp
     if (!scheduler) {
       const updated = await db.query<Agent>(
         `UPDATE agents SET last_heartbeat_at = NOW(), updated_at = NOW()
@@ -430,11 +570,9 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ data: { agent: updated.rows[0], triggered: false } })
     }
 
-    // Trigger real execution via the scheduler (which handles coalescing)
     const runResult = await scheduler.triggerNow(agentId, TriggerType.Manual)
 
     if (!runResult) {
-      // Coalesced (agent already running -- request queued) or failed to start
       const agent = agentResult.rows[0]
       const isAgentRunning = scheduler.isRunning(agentId)
       return c.json({
@@ -449,7 +587,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       })
     }
 
-    // Re-fetch agent to get updated state after execution
     const updatedAgent = await db.query<Agent>(
       `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
@@ -468,12 +605,62 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     })
   })
 
-  // POST /api/companies/:id/agents/:agentId/api-keys — generate API key
+  // DELETE /api/companies/:id/agents/:agentId -- delete a terminated agent
+  app.delete('/:id/agents/:agentId', companyScope, async (c) => {
+    const companyId = c.req.param('id')
+    const agentId = c.req.param('agentId')
+
+    // Board guard
+    const delCompany = c.get('company')
+    const delGuard = await checkBoardGuard(c, delCompany, BoardGuardedMutation.AgentDelete, db)
+    if (delGuard) return delGuard
+
+    const existing = await db.query<Agent>(
+      `SELECT * FROM agents WHERE id = $1 AND company_id = $2`,
+      [agentId, companyId],
+    )
+    if (existing.rows.length === 0) {
+      return c.json({ error: 'Agent not found' }, 404)
+    }
+
+    if (existing.rows[0].status !== AgentStatus.Terminated) {
+      return c.json(
+        {
+          error: 'Invalid state for deletion',
+          detail: `Agent must be terminated before deletion. Current status: "${existing.rows[0].status}".`,
+        },
+        409,
+      )
+    }
+
+    await db.query('DELETE FROM agent_config_revisions WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM agent_api_keys WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM heartbeat_runs WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM cost_events WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM tool_calls WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM workspace_policy_rules WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM workspace_operations WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM agent_worktrees WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM agent_wakeup_requests WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM finance_events WHERE agent_id = $1', [agentId])
+    await db.query('DELETE FROM quota_windows WHERE agent_id = $1', [agentId])
+
+    await db.query('UPDATE issues SET assignee_agent_id = NULL WHERE assignee_agent_id = $1', [agentId])
+    await db.query('UPDATE issue_comments SET author_agent_id = NULL WHERE author_agent_id = $1', [agentId])
+    await db.query('UPDATE goals SET owner_agent_id = NULL WHERE owner_agent_id = $1', [agentId])
+    await db.query('UPDATE projects SET lead_agent_id = NULL WHERE lead_agent_id = $1', [agentId])
+    await db.query('UPDATE policies SET agent_id = NULL WHERE agent_id = $1', [agentId])
+
+    await db.query('DELETE FROM agents WHERE id = $1 AND company_id = $2', [agentId, companyId])
+
+    return c.json({ deleted: true })
+  })
+
+  // POST /api/companies/:id/agents/:agentId/api-keys
   app.post('/:id/agents/:agentId/api-keys', companyScope, async (c) => {
     const companyId = c.req.param('id')
     const agentId = c.req.param('agentId')
 
-    // Verify agent belongs to company
     const agentResult = await db.query<Agent>(
       `SELECT id FROM agents WHERE id = $1 AND company_id = $2`,
       [agentId, companyId],
@@ -482,7 +669,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       return c.json({ error: 'Agent not found' }, 404)
     }
 
-    // Parse optional label from body
     let label: string | null = null
     try {
       const body = await c.req.json()
@@ -490,7 +676,7 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
         label = body.label
       }
     } catch {
-      // body is optional — no label
+      // body is optional
     }
 
     const plainKey = randomBytes(32).toString('hex')
@@ -507,7 +693,6 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
       {
         data: {
           ...result.rows[0],
-          // Returned ONCE — never stored in plaintext
           key: plainKey,
         },
       },
