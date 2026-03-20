@@ -56,12 +56,20 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
 
     const { name, description, status, issue_prefix, budget_monthly_cents } = parsed.data
 
-    const result = await db.query<Company>(
-      `INSERT INTO companies (name, description, status, issue_prefix, budget_monthly_cents)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [name, description ?? null, status, issue_prefix, budget_monthly_cents],
-    )
+    let result: { rows: Company[] }
+    try {
+      result = await db.query<Company>(
+        `INSERT INTO companies (name, description, status, issue_prefix, budget_monthly_cents)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [name, description ?? null, status, issue_prefix, budget_monthly_cents],
+      )
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === '23505') {
+        return c.json({ error: 'A company with this issue prefix already exists' }, 409)
+      }
+      throw err
+    }
 
     return c.json({ data: withLogoUrl(result.rows[0]) }, 201)
   })
@@ -98,10 +106,18 @@ export function companiesRouter(db: DatabaseProvider): Hono<{ Variables: Variabl
     const values = fields.map((f) => updates[f])
 
     const id = c.req.param('id')
-    const result = await db.query<Company>(
-      `UPDATE companies SET ${setClauses}, updated_at = NOW() WHERE id = $1 RETURNING *`,
-      [id, ...values],
-    )
+    let result: { rows: Company[] }
+    try {
+      result = await db.query<Company>(
+        `UPDATE companies SET ${setClauses}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [id, ...values],
+      )
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === '23505') {
+        return c.json({ error: 'A company with this issue prefix already exists' }, 409)
+      }
+      throw err
+    }
 
     return c.json({ data: withLogoUrl(result.rows[0]) })
   })

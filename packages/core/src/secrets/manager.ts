@@ -102,20 +102,19 @@ export class SecretsManager {
     return decrypted.toString('utf8')
   }
 
-  /** Store an encrypted secret. Upserts on (company_id, name). */
+  /** Store an encrypted secret. Returns null if a secret with the same name already exists (#306). */
   async store(
     companyId: string,
     name: string,
     value: string,
     createdBy?: string,
-  ): Promise<SecretRow> {
+  ): Promise<SecretRow | null> {
     const encryptedValue = this.encrypt(value)
 
     const sql = [
       'INSERT INTO secrets (company_id, name, encrypted_value, created_by)',
       'VALUES ($1, $2, $3, $4)',
-      'ON CONFLICT (company_id, name)',
-      'DO UPDATE SET encrypted_value = $3, updated_at = NOW()',
+      'ON CONFLICT (company_id, name) DO NOTHING',
       'RETURNING *',
     ].join(' ')
 
@@ -125,6 +124,10 @@ export class SecretsManager {
       encryptedValue,
       createdBy ?? null,
     ])
+
+    if (result.rows.length === 0) {
+      return null
+    }
 
     return result.rows[0]
   }

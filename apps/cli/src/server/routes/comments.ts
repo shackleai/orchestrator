@@ -81,6 +81,17 @@ export function commentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hon
 
     const { content, author_agent_id, parent_id, is_resolved } = parsed.data
 
+    // Validate parent_id exists and belongs to the same issue (#302)
+    if (parent_id) {
+      const parentCheck = await db.query<Pick<IssueComment, 'id'>>(
+        `SELECT id FROM issue_comments WHERE id = $1 AND issue_id = $2`,
+        [parent_id, issueId],
+      )
+      if (parentCheck.rows.length === 0) {
+        return c.json({ error: 'Parent comment not found' }, 404)
+      }
+    }
+
     const result = await db.query<IssueComment>(
       `INSERT INTO issue_comments (issue_id, author_agent_id, content, parent_id, is_resolved)
        VALUES ($1, $2, $3, $4, $5)

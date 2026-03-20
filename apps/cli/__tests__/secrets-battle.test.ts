@@ -8,18 +8,13 @@
  *   - AES-256-GCM encryption, key derived via scrypt from SHACKLEAI_SECRET_KEY
  *     env var (or auto-generated file at ~/.shackleai/orchestrator/.secret-key)
  *   - Storage: `secrets` table with UNIQUE(company_id, name)
- *   - POST uses UPSERT (ON CONFLICT DO UPDATE) — duplicate name → 200, not 409
+ *   - POST returns 409 on duplicate name (ON CONFLICT DO NOTHING)
  *   - Secret names must match /^[A-Za-z_][A-Za-z0-9_]*$/ (env-var style)
  *   - Value must be non-empty (Zod nonEmpty)
  *   - List response never includes the encrypted value — values are redacted
  *   - GET /:name returns the DECRYPTED plaintext value
  *   - getAllDecrypted() is used for env var injection into adapters
  *
- * BUG: POST /secrets with a duplicate name returns 200 (upsert), not 409.
- * The test instructions expected a 409 on duplicate, but the implementation
- * uses ON CONFLICT DO UPDATE — updates the encrypted value silently.
- * ENHANCEMENT: Consider returning 409 for exact duplicates or adding a
- * separate PUT endpoint for intentional updates vs. create-only POST.
  *
  * Covers:
  *   Happy Path:
@@ -32,7 +27,7 @@
  *     5. Secret value with special characters (URLs, tokens, JSON-like strings)
  *     6. Secret names at boundary — single char, underscores, numbers in body
  *     7. Two companies — secrets are isolated (multi-tenant)
- *     8. Overwrite/upsert via duplicate name POST
+ *     8. Duplicate name POST returns 409
  *     9. Multiple secrets with similar names (prefix collision)
  *
  *   Error Cases:
@@ -584,17 +579,10 @@ describe('Secrets Battle 7: multi-tenant isolation', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Battle 8 — Upsert behavior: duplicate name POST updates value (not 409)
-//
-// BUG: The implementation uses ON CONFLICT DO UPDATE (upsert), so a second
-// POST with the same name silently overwrites the value. The test instructions
-// expected a 409, but the actual behavior is an update. This is documented here.
-//
-// ENHANCEMENT: Consider adding a separate PUT /secrets/:name endpoint for
-// explicit updates, and changing POST to return 409 on duplicates.
+// Battle 8 — Duplicate name POST returns 409 (no longer upserts)
 // ---------------------------------------------------------------------------
 
-describe('Secrets Battle 8: upsert behavior — duplicate name', () => {
+describe('Secrets Battle 8: duplicate name returns 409', () => {
   let db: PGliteProvider
   let app: App
   let companyId: string
@@ -611,22 +599,21 @@ describe('Secrets Battle 8: upsert behavior — duplicate name', () => {
     await db.close()
   })
 
-  it('BUG: second POST with same name returns 201 (upsert, not 409)', async () => {
+  it('second POST with same name returns 409', async () => {
     await storeSecret(app, companyId, 'MY_KEY', 'original-value')
 
-    // Second POST with same name — DOCUMENTS CURRENT (UPSERT) BEHAVIOR
-    const { status } = await storeSecret(app, companyId, 'MY_KEY', 'updated-value')
-    // Returns 201 because the route always returns 201 after upsert
-    expect(status).toBe(201)
+    const { status, body } = await storeSecret(app, companyId, 'MY_KEY', 'updated-value')
+    expect(status).toBe(409)
+    expect(body.error).toBe('Secret with this name already exists')
   })
 
-  it('GET after upsert returns the updated value', async () => {
+  it('GET after rejected duplicate still returns original value', async () => {
     const { body } = await getSecret(app, companyId, 'MY_KEY')
     const data = body.data as { value: string }
-    expect(data.value).toBe('updated-value')
+    expect(data.value).toBe('original-value')
   })
 
-  it('list shows only one entry for the upserted secret', async () => {
+  it('list shows only one entry for the secret', async () => {
     const { data } = await listSecrets(app, companyId)
     const matches = data.filter((s) => s.name === 'MY_KEY')
     expect(matches.length).toBe(1)

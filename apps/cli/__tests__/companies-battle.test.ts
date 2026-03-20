@@ -400,17 +400,15 @@ describe('Battle C: duplicate issue_prefix constraint', () => {
     expect(res.status).toBe(201)
   })
 
-  it('returns 409/500 when second company uses the same issue_prefix', async () => {
-    // The DB has a UNIQUE constraint on issue_prefix — should fail
+  it('returns 409 when second company uses the same issue_prefix', async () => {
     const res = await app.request('/api/companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Duplicate Prefix Co', issue_prefix: 'UNIQ' }),
     })
-    // PGlite unique violation surfaces as a 500 (DB constraint) or a handled 409
-    // Either is acceptable — the key assertion is that it does NOT return 201
-    // BUG: No deduplication guard returns a user-friendly 409 — raw 500 is returned
-    expect(res.status).not.toBe(201)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('A company with this issue prefix already exists')
   })
 
   it('can create second company with a different prefix after the conflict', async () => {
@@ -439,8 +437,9 @@ describe('Battle C: duplicate issue_prefix constraint', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issue_prefix: 'UNIQ' }),
     })
-    // BUG: No deduplication guard — raw 500 from DB unique constraint
-    expect(res.status).not.toBe(200)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('A company with this issue prefix already exists')
   })
 })
 

@@ -47,6 +47,10 @@ export function secretsRouter(db: DatabaseProvider): Hono<{ Variables: Variables
     const { name, value, created_by } = parsed.data
     const row = await secrets.store(companyId, name, value, created_by)
 
+    if (!row) {
+      return c.json({ error: 'Secret with this name already exists' }, 409)
+    }
+
     return c.json({
       data: {
         id: row.id,

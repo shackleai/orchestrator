@@ -35,6 +35,7 @@ import * as m033 from './033_users.js'
 import * as m034 from './034_plugins.js'
 import * as m035 from './035_board_claim.js'
 import * as m036 from './036_memberships.js'
+import * as m037 from './037_comment_parent_set_null.js'
 
 export interface Migration {
   name: string
@@ -78,6 +79,7 @@ const migrations: Migration[] = [
   m034,
   m035,
   m036,
+  m037,
 ]
 
 /**

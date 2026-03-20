@@ -5,7 +5,7 @@
  *   - PATCH (edit content, resolve, unresolve)
  *   - Edit after resolve
  *   - Deeply nested replies (3 levels)
- *   - Delete parent comment — verifies orphaned replies remain (DB has no cascade)
+ *   - Delete parent comment — verifies children are orphaned (ON DELETE SET NULL)
  *   - PATCH non-existent comment → 404
  *   - PATCH with empty content → 400
  *   - PATCH with no fields → 400
@@ -318,48 +318,43 @@ describe('comments battle — deeply nested replies (#276)', () => {
     expect(ids).toContain(l3.data.id)
   })
 
-  it('reply to non-existent parent_id is rejected by DB FK constraint', async () => {
-    // BUG: The API does not validate parent_id at the application layer before hitting the DB.
-    // The DB has a FK constraint (issue_comments_parent_id_fkey) that rejects dangling parent_ids,
-    // causing an unhandled 500 instead of a clean 400 with a helpful error message.
-    // ENHANCEMENT: Validate parent_id existence at the route layer and return 404 with
-    // "Parent comment not found" before the DB insert.
+  it('reply to non-existent parent_id returns 404', async () => {
     const res = await postComment(app, companyId, issueId, {
       content: 'Orphan reply',
       parent_id: '00000000-0000-0000-0000-000000000000',
     })
-    // Current behavior: 500 (unhandled FK violation — DB rejects but API returns 500)
-    // Expected behavior: 404 "Parent comment not found"
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Parent comment not found')
   })
 
-  it('delete parent comment with children is blocked by DB FK constraint (no cascade)', async () => {
-    // BUG: Deleting a parent comment that has child replies causes an unhandled 500.
-    // The DB has issue_comments_parent_id_fkey WITHOUT ON DELETE CASCADE or SET NULL,
-    // so the DELETE is rejected by the DB, but the route returns a raw 500 instead of
-    // a clean 409 "Cannot delete comment with replies" or similar.
-    // ENHANCEMENT: Either add ON DELETE SET NULL to the FK migration so parent
-    // deletion succeeds (orphaning children), or check for children and return 409.
+  it('delete parent comment with children succeeds — children are orphaned (parent_id set to null)', async () => {
     const parentRes = await postComment(app, companyId, issueId, {
       content: 'Parent to delete',
     })
     const parent = (await parentRes.json()) as { data: CommentRow }
 
     const childRes = await postComment(app, companyId, issueId, {
-      content: 'Child that blocks parent deletion',
+      content: 'Child that becomes orphaned',
       parent_id: parent.data.id,
     })
     const child = (await childRes.json()) as { data: CommentRow }
     expect(child.data.parent_id).toBe(parent.data.id)
 
-    // Attempt to delete parent — blocked by FK constraint
+    // Delete parent — ON DELETE SET NULL orphans children gracefully
     const deleteRes = await app.request(
       `/api/companies/${companyId}/issues/${issueId}/comments/${parent.data.id}`,
       { method: 'DELETE' },
     )
-    // Current behavior: 500 (unhandled FK violation)
-    // Expected behavior: 409 "Cannot delete a comment that has replies"
-    expect(deleteRes.status).toBe(500)
+    expect(deleteRes.status).toBe(200)
+
+    // Verify child still exists but parent_id is now null
+    const childGetRes = await app.request(
+      `/api/companies/${companyId}/issues/${issueId}/comments/${child.data.id}`,
+    )
+    expect(childGetRes.status).toBe(200)
+    const updatedChild = (await childGetRes.json()) as { data: CommentRow }
+    expect(updatedChild.data.parent_id).toBeNull()
   })
 })
 
