@@ -76,6 +76,20 @@ async function seedTestData(provider: DatabaseProvider): Promise<void> {
     ],
   )
 
+  // Insert cost_events so checkBudget (which sums cost_events) sees over-budget spend
+  await provider.query(
+    `INSERT INTO cost_events (id, company_id, agent_id, cost_cents, provider, model, occurred_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      '00000000-0000-4000-a000-000000000099',
+      COMPANY_ID,
+      AGENT_OVERBUDGET_ID,
+      1500,
+      'test',
+      'test-model',
+    ],
+  )
+
   // Agent with unknown adapter type
   await provider.query(
     `INSERT INTO agents (id, company_id, name, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents)
