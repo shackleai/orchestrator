@@ -883,22 +883,9 @@ describe('DELEGATION BATTLE — 3-level chain roll-up', () => {
     expect(parentBody.data.status).toBe('done')
   })
 
-  // BUG DOCUMENTED: rollUpParentStatus() only climbs one level.
-  // When the grandchild is marked done → the child (managerTask) is auto-completed by
-  // rollUpParentStatus, but that DB write happens inside a void Promise and does NOT
-  // re-trigger the PATCH handler. Therefore no second roll-up fires for the grandparent.
-  //
-  // Root cause: rollUpParentStatus() in packages/core/src/delegation.ts calls
-  //   `UPDATE issues SET status = 'done' ... WHERE id = $parentId`
-  // directly without recursing — so the grandparent's parent_id is never checked.
-  //
-  // Fix needed: rollUpParentStatus() must recurse up: after marking a parent done,
-  // fetch THAT issue's parent_id and call rollUpParentStatus() again if set.
-  // OR the PATCH handler should call rollUpParentStatus on the newly-completed
-  // parent's parent_id after each roll-up.
-  //
-  // Tracked as BUG: 3-level delegation chain roll-up does not cascade beyond 2 levels.
-  it('DELEG-24b: BUG — 3-level chain roll-up does not cascade to grandparent', async () => {
+  // FIXED: rollUpParentStatus() now recursively cascades up the hierarchy.
+  // When grandchild is marked done -> child auto-completes -> grandparent auto-completes.
+  it('DELEG-24b: FIXED — 3-level chain roll-up cascades to grandparent', async () => {
     // Level 1: CEO creates grandparent issue
     const grandparent = await makeIssue(app, companyId, { title: 'L1 Grandparent' })
 
@@ -939,17 +926,14 @@ describe('DELEGATION BATTLE — 3-level chain roll-up', () => {
     const managerBody = (await managerCheck.json()) as { data: IssueRow }
     expect(managerBody.data.status).toBe('done')
 
-    // Wait for potential second-level cascade
-    await new Promise((r) => setTimeout(r, 200))
+    // Wait for recursive cascade (L2 -> L1)
+    await new Promise((r) => setTimeout(r, 300))
 
-    // BUG: grandparent is NOT auto-completed — roll-up stops at one level.
-    // This assertion documents the current (broken) behaviour.
-    // When the bug is fixed, change this expectation to toBe('done').
+    // L1 (grandparent) should now ALSO be auto-completed by recursive roll-up
     const grandparentCheck = await app.request(
       `/api/companies/${companyId}/issues/${grandparent.id}`,
     )
     const grandparentBody = (await grandparentCheck.json()) as { data: IssueRow }
-    // Current behaviour: grandparent remains in its original status (not auto-completed)
-    expect(grandparentBody.data.status).not.toBe('done')
+    expect(grandparentBody.data.status).toBe('done')
   })
 })

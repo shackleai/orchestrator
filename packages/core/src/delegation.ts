@@ -123,7 +123,8 @@ export class DelegationService {
 
 /**
  * Roll up parent issue status when a child issue is completed.
- * If ALL children of a parent are 'done', sets the parent to 'done'.
+ * If ALL children of a parent are 'done', sets the parent to 'done',
+ * then recursively checks the parent's parent (grandparent cascade).
  */
 export async function rollUpParentStatus(
   db: DatabaseProvider,
@@ -147,6 +148,17 @@ export async function rollUpParentStatus(
        WHERE id = $2`,
       [IssueStatus.Done, parentIssueId],
     )
+
+    // Recurse: check if this parent's parent should also be marked done
+    const parentResult = await db.query<{ parent_id: string | null }>(
+      `SELECT parent_id FROM issues WHERE id = $1`,
+      [parentIssueId],
+    )
+
+    if (parentResult.rows.length > 0 && parentResult.rows[0].parent_id) {
+      await rollUpParentStatus(db, parentResult.rows[0].parent_id)
+    }
+
     return true
   }
 

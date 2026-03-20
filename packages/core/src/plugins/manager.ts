@@ -53,18 +53,31 @@ export class PluginManager {
     source: string,
     config: Record<string, unknown> = {},
   ): Promise<PluginInfo> {
-    // Load and validate
-    const plugin = await this.loader.loadFromNpm(source)
-
-    // Check if already installed for this company
+    // Check DB for existing install BEFORE loading from npm to avoid
+    // inconsistent error messages (in-memory check vs DB check race).
     const existing = await this.db.query<PluginRecord>(
-      'SELECT id FROM plugins WHERE company_id = $1 AND name = $2',
-      [companyId, plugin.name],
+      'SELECT id, name FROM plugins WHERE company_id = $1 AND name = $2',
+      [companyId, source],
     )
 
     if (existing.rows.length > 0) {
-      this.loader.untrack(plugin.name)
-      throw new Error(`Plugin '${plugin.name}' is already installed for this company`)
+      throw new Error(`Plugin '${existing.rows[0].name}' is already installed for this company`)
+    }
+
+    // Load and validate
+    const plugin = await this.loader.loadFromNpm(source)
+
+    // Re-check with the actual plugin name (may differ from source/package name)
+    if (plugin.name !== source) {
+      const existingByName = await this.db.query<PluginRecord>(
+        'SELECT id FROM plugins WHERE company_id = $1 AND name = $2',
+        [companyId, plugin.name],
+      )
+
+      if (existingByName.rows.length > 0) {
+        this.loader.untrack(plugin.name)
+        throw new Error(`Plugin '${plugin.name}' is already installed for this company`)
+      }
     }
 
     // Initialize
