@@ -44,14 +44,18 @@ describe('McpAdapter', () => {
       adapterConfig: {
         url: 'http://127.0.0.1:1/mcp',
         toolName: 'test-tool',
-        timeout: 5,
+        // Keep timeout short so callTool races don't add extra delay, but the
+        // real bottleneck is the TCP connect() call which has no timeout in the
+        // adapter. On Windows, connection refusal to port 1 can take >15s, so
+        // we allow 30s at the Vitest level.
+        timeout: 2,
       },
     })
 
     const result = await adapter.execute(ctx)
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain('MCP tool call failed')
-  }, 15_000)
+  }, 30_000)
 
   it('testEnvironment checks for SDK availability', async () => {
     const result = await adapter.testEnvironment()
