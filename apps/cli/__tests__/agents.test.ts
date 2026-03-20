@@ -192,7 +192,7 @@ describe('agents routes — lifecycle', () => {
     app = createApp(db, { skipAuth: true })
     companyId = await createCompany(app, 'Lifecycle Corp')
 
-    const res = await createAgent(app, companyId, { name: 'Lifecycle Agent' })
+    const res = await createAgent(app, companyId, { name: 'Lifecycle Agent', adapter_type: AdapterType.Process })
     const body = (await res.json()) as { data: { id: string } }
     agentId = body.data.id
   })

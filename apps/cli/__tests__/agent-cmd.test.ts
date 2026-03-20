@@ -132,7 +132,7 @@ describe('agent CLI command — API integration', () => {
   })
 
   it('wakeup agent triggers heartbeat', async () => {
-    const createRes = await createAgent(app, companyId, { name: 'WakeBot' })
+    const createRes = await createAgent(app, companyId, { name: 'WakeBot', adapter_type: AdapterType.Process })
     const created = (await createRes.json()) as { data: { id: string } }
     const agentId = created.data.id
 

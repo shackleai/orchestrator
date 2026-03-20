@@ -78,7 +78,7 @@ describe('AdapterRegistry', () => {
     registry.register(mockAdapter)
 
     const all = registry.list()
-    expect(all).toHaveLength(11) // 10 built-in + 1 custom
+    expect(all).toHaveLength(12) // 11 built-in + 1 custom
     expect(all.map((a) => a.type).sort()).toEqual([
       'claude',
       'codex',
@@ -90,6 +90,7 @@ describe('AdapterRegistry', () => {
       'kiro',
       'mcp',
       'openclaw',
+      'opencode',
       'process',
     ])
   })
