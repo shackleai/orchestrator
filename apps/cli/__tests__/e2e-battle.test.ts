@@ -14,13 +14,16 @@
  *  10. Agent lifecycle (pause → resume → terminate)
  *  11. API key generation (one-shot plaintext, stored as hash)
  *  12. Multi-tenant isolation (company A cannot access company B resources)
+ *  13. Authentication (register, login, logout, JWT, dual auth, sessions, rotation, edge cases)
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execFile } from 'node:child_process'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { PGliteProvider, runMigrations } from '@shackleai/db'
+import { AgentApiKeyStatus, AdapterType } from '@shackleai/shared'
 import { createApp } from '../src/server/index.js'
 
 const execFileAsync = promisify(execFile)
@@ -1919,5 +1922,741 @@ describe('Battle 12: multi-tenant isolation', () => {
     expect(resB.status).toBe(200)
     const body = (await resB.json()) as { data: CompanyRow }
     expect(body.data.name).toBe('Tenant Beta')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 13. Authentication Battle Test
+// ---------------------------------------------------------------------------
+//
+// Covers all scenarios from GitHub issue #272:
+//
+// Happy Path:
+//   - Register new user
+//   - Login with valid credentials
+//   - Logout (session invalidation)
+//   - JWT token validates on protected routes (createApiAuth accepts JWT)
+//   - API key authentication (createApiAuth accepts agent API keys)
+//   - Dual auth — JWT + API key both accepted on same protected route
+//   - Health endpoint — no auth required
+//
+// Edge Cases:
+//   - Token near expiry (1-second TTL JWT still works before it expires)
+//   - Multiple active sessions (same user, multiple logins co-exist)
+//   - API key rotation (revoke old key → new key works, old key rejected)
+//
+// Error Cases:
+//   - Login with wrong password → 401
+//   - Expired JWT → 401
+//   - Invalid API key → 401
+//   - Missing auth header → 401
+//   - Register with existing email → 409
+//   - Register with invalid email → 400
+//   - Register with password too short → 400
+//   - Login with invalid email format → 400
+//   - /me after logout → 401 (session invalidated even though token is cryptographically valid)
+//   - Login error is ambiguous (same message for wrong password and unknown user)
+//   - Forged JWT (tampered signature) → 401
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Helpers local to Battle 13
+// ---------------------------------------------------------------------------
+
+/** Build a minimal HS256 JWT with a custom exp (seconds from now). */
+function buildJwt(
+  payload: { sub: string; email: string; role: string },
+  ttlSeconds: number,
+  secret = 'shackleai-dev-jwt-secret-change-me',
+): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const now = Math.floor(Date.now() / 1000)
+  const fullPayload = base64UrlEncode(
+    JSON.stringify({ ...payload, iat: now, exp: now + ttlSeconds }),
+  )
+  const signature = createHmac('sha256', secret)
+    .update(`${header}.${fullPayload}`)
+    .digest('base64url')
+  return `${header}.${fullPayload}.${signature}`
+}
+
+function base64UrlEncode(data: string): string {
+  return Buffer.from(data).toString('base64url')
+}
+
+/** Seed an agent API key directly into the DB (reuses the pattern from auth.test.ts). */
+async function seedApiKey(
+  db: PGliteProvider,
+  plainKey: string,
+  status: string = AgentApiKeyStatus.Active,
+): Promise<void> {
+  const setupApp = createApp(db, { skipAuth: true })
+
+  const companyRes = await setupApp.request('/api/companies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: `Auth Battle Corp ${randomBytes(4).toString('hex')}`,
+      issue_prefix: randomBytes(3).toString('hex').toUpperCase(),
+    }),
+  })
+  const { data: company } = (await companyRes.json()) as { data: { id: string } }
+
+  const agentRes = await setupApp.request(`/api/companies/${company.id}/agents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Auth Battle Agent', adapter_type: AdapterType.Process }),
+  })
+  const { data: agent } = (await agentRes.json()) as { data: { id: string } }
+
+  const keyHash = createHash('sha256').update(plainKey).digest('hex')
+  await db.query(
+    `INSERT INTO agent_api_keys (agent_id, company_id, key_hash, status)
+     VALUES ($1, $2, $3, $4)`,
+    [agent.id, company.id, keyHash, status],
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Battle 13 — Happy Path
+// ---------------------------------------------------------------------------
+
+describe('Battle 13a: authentication — happy path', () => {
+  let db: PGliteProvider
+  let app: App
+  let registeredEmail: string
+  let registeredToken: string
+  let registeredUserId: string
+
+  beforeAll(async () => {
+    db = new PGliteProvider()
+    await runMigrations(db)
+    // Auth routes are always active regardless of skipAuth; we test with real auth engaged
+    app = createApp(db)
+  })
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  // --- Health: always public ---
+
+  it('GET /api/health requires no auth', async () => {
+    const res = await app.request('/api/health')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { status: string }
+    expect(body.status).toBe('ok')
+  })
+
+  // --- Register ---
+
+  it('POST /api/auth/register creates a new user and returns JWT', async () => {
+    registeredEmail = `battle-auth-${randomBytes(4).toString('hex')}@test.shackleai.com`
+
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: registeredEmail,
+        password: 'Battle@1234!',
+        name: 'Battle Auth User',
+      }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { data: { user: { id: string; email: string; password_hash?: string }; token: string } }
+    expect(body.data.user.email).toBe(registeredEmail)
+    expect(body.data.token).toBeTruthy()
+    // Password hash must NEVER be returned
+    expect(body.data.user.password_hash).toBeUndefined()
+
+    registeredToken = body.data.token
+    registeredUserId = body.data.user.id
+  })
+
+  // --- JWT validates on protected routes ---
+
+  it('JWT token from register is accepted by the global auth middleware on protected routes', async () => {
+    // /api/companies is a protected route — should pass with a valid human JWT
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${registeredToken}` },
+    })
+    // 200 means auth passed; the route itself may return empty list — that's fine
+    expect(res.status).toBe(200)
+  })
+
+  // --- Login ---
+
+  it('POST /api/auth/login returns a fresh JWT for valid credentials', async () => {
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: registeredEmail, password: 'Battle@1234!' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { token: string; user: { email: string } } }
+    expect(body.data.token).toBeTruthy()
+    expect(body.data.user.email).toBe(registeredEmail)
+    // Each login issues a new token (different iat at minimum)
+    // We don't assert inequality here because same-second logins can collide — tested in edge cases
+    registeredToken = body.data.token
+  })
+
+  // --- GET /me with valid JWT ---
+
+  it('GET /api/auth/me returns user profile for a valid JWT', async () => {
+    const res = await app.request('/api/auth/me', {
+      headers: { Authorization: `Bearer ${registeredToken}` },
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { id: string; email: string } }
+    expect(body.data.email).toBe(registeredEmail)
+    expect(body.data.id).toBe(registeredUserId)
+  })
+
+  // --- API key authentication ---
+
+  it('agent API key is accepted by the global auth middleware on protected routes', async () => {
+    const plainKey = randomBytes(32).toString('hex')
+    await seedApiKey(db, plainKey, AgentApiKeyStatus.Active)
+
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${plainKey}` },
+    })
+    expect(res.status).toBe(200)
+  })
+
+  // --- Dual auth: JWT and API key both work on the same endpoint ---
+
+  it('protected endpoint accepts JWT (human) and API key (agent) interchangeably', async () => {
+    const plainKey = randomBytes(32).toString('hex')
+    await seedApiKey(db, plainKey, AgentApiKeyStatus.Active)
+
+    const [jwtRes, keyRes] = await Promise.all([
+      app.request('/api/companies', {
+        headers: { Authorization: `Bearer ${registeredToken}` },
+      }),
+      app.request('/api/companies', {
+        headers: { Authorization: `Bearer ${plainKey}` },
+      }),
+    ])
+
+    expect(jwtRes.status).toBe(200)
+    expect(keyRes.status).toBe(200)
+  })
+
+  // --- Logout ---
+
+  it('POST /api/auth/logout invalidates the session', async () => {
+    const logoutRes = await app.request('/api/auth/logout', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${registeredToken}` },
+    })
+    expect(logoutRes.status).toBe(200)
+    const body = (await logoutRes.json()) as { data: { message: string } }
+    expect(body.data.message).toContain('Logged out')
+  })
+
+  it('GET /api/auth/me returns 401 after logout even though JWT is cryptographically valid', async () => {
+    // The JWT itself is still valid (not expired), but the session was deleted on logout.
+    // The /me route must check the session table, not just the JWT signature.
+    const res = await app.request('/api/auth/me', {
+      headers: { Authorization: `Bearer ${registeredToken}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('protected routes reject the invalidated JWT after logout', async () => {
+    // The global createApiAuth also tries JWT first — it should reject because the session
+    // no longer exists in user_sessions after logout.
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${registeredToken}` },
+    })
+    expect(res.status).toBe(401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Battle 13b — Edge Cases
+// ---------------------------------------------------------------------------
+
+describe('Battle 13b: authentication — edge cases', () => {
+  let db: PGliteProvider
+  let app: App
+
+  beforeAll(async () => {
+    db = new PGliteProvider()
+    await runMigrations(db)
+    app = createApp(db)
+  })
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  // --- Token near expiry ---
+
+  it('JWT with 5-second TTL is accepted on protected routes before it expires', async () => {
+    // Register a user so we can build a valid, signed token
+    const email = `near-expiry-${randomBytes(4).toString('hex')}@test.shackleai.com`
+    const regRes = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Battle@1234!', name: 'Near Expiry User' }),
+    })
+    expect(regRes.status).toBe(201)
+    const regBody = (await regRes.json()) as { data: { user: { id: string; role: string }; token: string } }
+
+    // Build a token with only 5 seconds to live using the known dev secret
+    const shortToken = buildJwt(
+      { sub: regBody.data.user.id, email, role: regBody.data.user.role },
+      5,
+    )
+
+    // Store this short-lived session in user_sessions so the middleware can validate it
+    const tokenHash = createHash('sha256').update(shortToken).digest('hex')
+    const expiresAt = new Date(Date.now() + 5000).toISOString()
+    await db.query(
+      `INSERT INTO user_sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (token_hash) DO NOTHING`,
+      [regBody.data.user.id, tokenHash, expiresAt],
+    )
+
+    // Request immediately — token has not yet expired
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${shortToken}` },
+    })
+    expect(res.status).toBe(200)
+  })
+
+  // --- Multiple active sessions ---
+
+  it('a single user can have multiple active sessions simultaneously', async () => {
+    // NOTE — same-second collision caveat applies here too (see partial-logout test comment).
+    // We build token2 directly via buildJwt + 1100ms wait to guarantee different iat,
+    // then manually insert its session row so both sessions are truly independent.
+    const email = `multi-session-${randomBytes(4).toString('hex')}@test.shackleai.com`
+
+    // Register → token1 (normal session created by the API)
+    const regRes = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Battle@1234!', name: 'Multi Session User' }),
+    })
+    expect(regRes.status).toBe(201)
+    const regBody = (await regRes.json()) as { data: { user: { id: string; role: string }; token: string } }
+    const token1 = regBody.data.token
+    const userId = regBody.data.user.id
+    const userRole = regBody.data.user.role
+
+    // Wait >1 second to ensure different wall-clock second → different iat → different token hash
+    await new Promise((r) => setTimeout(r, 1100))
+
+    // Build token2 with a different iat and insert a second session row
+    const token2 = buildJwt({ sub: userId, email, role: userRole }, 7 * 24 * 60 * 60)
+    const token2Hash = createHash('sha256').update(token2).digest('hex')
+    const token2Expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    await db.query(
+      `INSERT INTO user_sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (token_hash) DO NOTHING`,
+      [userId, token2Hash, token2Expires],
+    )
+
+    // Both tokens must work independently
+    const [r1, r2] = await Promise.all([
+      app.request('/api/auth/me', { headers: { Authorization: `Bearer ${token1}` } }),
+      app.request('/api/auth/me', { headers: { Authorization: `Bearer ${token2}` } }),
+    ])
+    expect(r1.status).toBe(200)
+    expect(r2.status).toBe(200)
+
+    // Verify two distinct session rows exist in the DB for this user
+    const sessionRows = await db.query<{ id: string }>(
+      `SELECT id FROM user_sessions WHERE user_id = $1`,
+      [userId],
+    )
+    expect(sessionRows.rows.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('logging out of one session does not invalidate other sessions', async () => {
+    // NOTE — known limitation: JWT iat/exp has second-level precision. If two logins
+    // occur within the same wall-clock second they produce the same token hash, and the
+    // ON CONFLICT DO NOTHING clause merges them into one session row. Logging out then
+    // removes the shared row, which invalidates "both" tokens (they are the same token).
+    //
+    // This test avoids the race by:
+    //   1. Seeding token2 directly as a second, independent session row with a different
+    //      token (built via buildJwt with the same user sub), bypassing the collision.
+    //   2. Verifying that the logout of token1 only removes token1's session row.
+    //
+    // BUG: If two login requests arrive in the same second, the second session is silently
+    // dropped by ON CONFLICT DO NOTHING — they become the same session. The fix would be
+    // to include a random nonce (jti claim) in the JWT payload to guarantee uniqueness.
+    // See: https://github.com/shackleai/orchestrator/issues/272
+
+    const email = `partial-logout-${randomBytes(4).toString('hex')}@test.shackleai.com`
+
+    // Register → token1 (from the API — normal session row)
+    const regRes = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Battle@1234!', name: 'Partial Logout User' }),
+    })
+    expect(regRes.status).toBe(201)
+    const regBody = (await regRes.json()) as { data: { user: { id: string; role: string }; token: string } }
+    const token1 = regBody.data.token
+    const userId = regBody.data.user.id
+    const userRole = regBody.data.user.role
+
+    // Build token2 directly — different token, different session row.
+    // Wait to ensure different wall-clock second so iat differs from token1.
+    await new Promise((r) => setTimeout(r, 1100))
+    const token2 = buildJwt({ sub: userId, email, role: userRole }, 7 * 24 * 60 * 60)
+    const token2Hash = createHash('sha256').update(token2).digest('hex')
+    const token2Expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    await db.query(
+      `INSERT INTO user_sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (token_hash) DO NOTHING`,
+      [userId, token2Hash, token2Expires],
+    )
+
+    // Verify both sessions are in the DB
+    const beforeLogout = await db.query<{ id: string }>(
+      `SELECT id FROM user_sessions WHERE user_id = $1`,
+      [userId],
+    )
+    expect(beforeLogout.rows.length).toBe(2)
+
+    // Logout token1 only
+    const logoutRes = await app.request('/api/auth/logout', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token1}` },
+    })
+    expect(logoutRes.status).toBe(200)
+
+    // token1 should now be rejected
+    const r1 = await app.request('/api/auth/me', { headers: { Authorization: `Bearer ${token1}` } })
+    expect(r1.status).toBe(401)
+
+    // token2 must still be valid — its session row was not touched
+    const r2 = await app.request('/api/auth/me', { headers: { Authorization: `Bearer ${token2}` } })
+    expect(r2.status).toBe(200)
+
+    // Only one session row remains (token2's)
+    const afterLogout = await db.query<{ id: string }>(
+      `SELECT id FROM user_sessions WHERE user_id = $1`,
+      [userId],
+    )
+    expect(afterLogout.rows.length).toBe(1)
+  })
+
+  // --- API key rotation ---
+
+  it('API key rotation: revoked key is rejected, new key is accepted', async () => {
+    const oldKey = randomBytes(32).toString('hex')
+    const newKey = randomBytes(32).toString('hex')
+
+    // Seed old key as active
+    await seedApiKey(db, oldKey, AgentApiKeyStatus.Active)
+
+    // Old key works initially
+    const r1 = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${oldKey}` },
+    })
+    expect(r1.status).toBe(200)
+
+    // Revoke the old key directly in DB (simulates key rotation via API)
+    const oldHash = createHash('sha256').update(oldKey).digest('hex')
+    await db.query(
+      `UPDATE agent_api_keys SET status = $1 WHERE key_hash = $2`,
+      [AgentApiKeyStatus.Revoked, oldHash],
+    )
+
+    // Old key is now rejected
+    const r2 = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${oldKey}` },
+    })
+    expect(r2.status).toBe(401)
+
+    // Seed new replacement key
+    await seedApiKey(db, newKey, AgentApiKeyStatus.Active)
+
+    // New key works
+    const r3 = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${newKey}` },
+    })
+    expect(r3.status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Battle 13c — Error Cases
+// ---------------------------------------------------------------------------
+
+describe('Battle 13c: authentication — error cases', () => {
+  let db: PGliteProvider
+  let app: App
+
+  beforeAll(async () => {
+    db = new PGliteProvider()
+    await runMigrations(db)
+    app = createApp(db)
+  })
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  // --- Login errors ---
+
+  it('POST /api/auth/login with wrong password returns 401', async () => {
+    const email = `wrong-pw-${randomBytes(4).toString('hex')}@test.shackleai.com`
+    await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Correct@1234!', name: 'Wrong PW User' }),
+    })
+
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'WrongPassword!' }),
+    })
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBeTruthy()
+  })
+
+  it('POST /api/auth/login error message is ambiguous (does not reveal whether user exists)', async () => {
+    // Non-existent user
+    const ghostRes = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: `ghost-${randomBytes(4).toString('hex')}@test.shackleai.com`,
+        password: 'Test@1234!',
+      }),
+    })
+    expect(ghostRes.status).toBe(401)
+    const ghostBody = (await ghostRes.json()) as { error: string }
+
+    // Register a real user, then login with wrong password
+    const realEmail = `real-${randomBytes(4).toString('hex')}@test.shackleai.com`
+    await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: realEmail, password: 'Correct@1234!', name: 'Real User' }),
+    })
+    const wrongPwRes = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: realEmail, password: 'WrongPassword!' }),
+    })
+    expect(wrongPwRes.status).toBe(401)
+    const wrongPwBody = (await wrongPwRes.json()) as { error: string }
+
+    // Same error message for both cases — prevents user enumeration
+    expect(ghostBody.error).toBe(wrongPwBody.error)
+  })
+
+  // --- Register errors ---
+
+  it('POST /api/auth/register with existing email returns 409', async () => {
+    const email = `dupe-${randomBytes(4).toString('hex')}@test.shackleai.com`
+    await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Battle@1234!', name: 'Dupe User' }),
+    })
+
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Different@1234!', name: 'Dupe User 2' }),
+    })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBeTruthy()
+  })
+
+  it('POST /api/auth/register with invalid email format returns 400', async () => {
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'not-an-email', password: 'Battle@1234!', name: 'Bad Email' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBeTruthy()
+  })
+
+  it('POST /api/auth/register with password too short (< 8 chars) returns 400', async () => {
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: `short-pw-${randomBytes(4).toString('hex')}@test.shackleai.com`,
+        password: 'short',
+        name: 'Short PW User',
+      }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toContain('8')
+  })
+
+  it('POST /api/auth/register with missing name returns 400', async () => {
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: `no-name-${randomBytes(4).toString('hex')}@test.shackleai.com`,
+        password: 'Battle@1234!',
+      }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/auth/login with invalid email format returns 400', async () => {
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'not-an-email', password: 'Battle@1234!' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBeTruthy()
+  })
+
+  // --- Protected route auth failures ---
+
+  it('protected route returns 401 when Authorization header is missing', async () => {
+    const res = await app.request('/api/companies')
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toContain('Unauthorized')
+  })
+
+  it('protected route returns 401 for an expired JWT', async () => {
+    // Build a token that expired 1 second ago (ttl = -1)
+    // We need a real user to build a plausible payload
+    const email = `expired-jwt-${randomBytes(4).toString('hex')}@test.shackleai.com`
+    const regRes = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Battle@1234!', name: 'Expired JWT User' }),
+    })
+    expect(regRes.status).toBe(201)
+    const regBody = (await regRes.json()) as { data: { user: { id: string; role: string } } }
+
+    // Build a token with exp = now - 1 (already expired)
+    const expiredToken = buildJwt(
+      { sub: regBody.data.user.id, email, role: regBody.data.user.role },
+      -1,
+    )
+
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${expiredToken}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('protected route returns 401 for a forged JWT (tampered signature)', async () => {
+    const email = `forged-${randomBytes(4).toString('hex')}@test.shackleai.com`
+    const regRes = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Battle@1234!', name: 'Forged JWT User' }),
+    })
+    expect(regRes.status).toBe(201)
+    const regBody = (await regRes.json()) as { data: { token: string } }
+
+    // Tamper with the signature (flip the last character)
+    const validToken = regBody.data.token
+    const parts = validToken.split('.')
+    const tamperedSig = parts[2].slice(0, -1) + (parts[2].endsWith('A') ? 'B' : 'A')
+    const forgedToken = `${parts[0]}.${parts[1]}.${tamperedSig}`
+
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${forgedToken}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('protected route returns 401 for a JWT signed with a different secret', async () => {
+    // Build a syntactically valid JWT but signed with a different secret
+    const fakeToken = buildJwt(
+      { sub: 'some-user-id', email: 'hacker@evil.com', role: 'admin' },
+      3600,
+      'wrong-secret-key',
+    )
+
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${fakeToken}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('protected route returns 401 for an invalid API key', async () => {
+    const unknownKey = randomBytes(32).toString('hex')
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${unknownKey}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('protected route returns 401 for a revoked API key', async () => {
+    const revokedKey = randomBytes(32).toString('hex')
+    await seedApiKey(db, revokedKey, AgentApiKeyStatus.Revoked)
+
+    const res = await app.request('/api/companies', {
+      headers: { Authorization: `Bearer ${revokedKey}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('POST /api/auth/logout without a token returns 401', async () => {
+    const res = await app.request('/api/auth/logout', {
+      method: 'POST',
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('GET /api/auth/me without a token returns 401', async () => {
+    const res = await app.request('/api/auth/me')
+    expect(res.status).toBe(401)
+  })
+
+  it('GET /api/auth/me with a structurally invalid JWT returns 401', async () => {
+    const res = await app.request('/api/auth/me', {
+      headers: { Authorization: 'Bearer this.is.not.valid' },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('email comparison is case-insensitive (register lowercase, login mixed-case)', async () => {
+    const baseEmail = `case-${randomBytes(4).toString('hex')}`
+    const lowerEmail = `${baseEmail}@test.shackleai.com`
+    const upperEmail = `${baseEmail.toUpperCase()}@test.shackleai.com`
+
+    // Register with lowercase
+    await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: lowerEmail, password: 'Battle@1234!', name: 'Case User' }),
+    })
+
+    // Login with uppercase variant — should succeed
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: upperEmail, password: 'Battle@1234!' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { user: { email: string } } }
+    // Stored email should always be lowercase
+    expect(body.data.user.email).toBe(lowerEmail)
   })
 })
