@@ -192,6 +192,7 @@ export class Scheduler {
       return null
     } finally {
       this.running.delete(agentId)
+      void this.drainPendingRequests(agentId)
     }
   }
 

@@ -52,6 +52,7 @@ interface JwtPayload {
   sub: string // user id
   email: string
   role: string
+  jti: string // unique token id to prevent same-second collisions
   iat: number
   exp: number
 }
@@ -64,12 +65,13 @@ function base64UrlDecode(data: string): string {
   return Buffer.from(data, 'base64url').toString('utf-8')
 }
 
-function signJwt(payload: Omit<JwtPayload, 'iat' | 'exp'>, ttlMs: number): string {
+function signJwt(payload: Omit<JwtPayload, 'jti' | 'iat' | 'exp'>, ttlMs: number): string {
   const header = { alg: 'HS256', typ: 'JWT' }
   const now = Math.floor(Date.now() / 1000)
 
   const fullPayload: JwtPayload = {
     ...payload,
+    jti: randomBytes(16).toString('hex'),
     iat: now,
     exp: now + Math.floor(ttlMs / 1000),
   }
