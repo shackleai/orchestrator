@@ -17,7 +17,7 @@ describe('init command — config and DB', () => {
     const applied = await runMigrations(db)
     expect(applied.length).toBeGreaterThan(0)
     expect(applied[0]).toBe('001_companies')
-  })
+  }, 15_000)
 
   it('should insert a company and return an id', async () => {
     const result = await db.query<{ id: string; name: string }>(

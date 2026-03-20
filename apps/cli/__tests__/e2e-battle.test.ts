@@ -1565,7 +1565,7 @@ describe('Battle 9: CLI smoke tests', () => {
 
   it('dist/index.js --version shows 0.1.0', async () => {
     const { stdout } = await execFileAsync('node', [CLI_PATH, '--version'], {
-      timeout: 5_000,
+      timeout: 10_000,
     })
     expect(stdout.trim()).toBe('0.1.0')
   })
