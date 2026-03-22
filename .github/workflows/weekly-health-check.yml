@@ -1,0 +1,142 @@
+name: Weekly Milestone Health Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 9am UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  health-check:
+    name: Milestone Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate health report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: shackleai/orchestrator
+        run: |
+          set -euo pipefail
+
+          REPORT_DATE=$(date -u '+%Y-%m-%d')
+          WEEK_AGO=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ')
+          STALE_DATE=$(date -u -d '14 days ago' '+%Y-%m-%dT%H:%M:%SZ')
+
+          # ── Milestones ──────────────────────────────────────────────────────
+          MILESTONE_ROWS=""
+          while IFS= read -r ms; do
+            TITLE=$(echo "$ms" | jq -r '.title')
+            OPEN=$(echo "$ms" | jq -r '.open_issues')
+            CLOSED=$(echo "$ms" | jq -r '.closed_issues')
+            TOTAL=$((OPEN + CLOSED))
+            DUE=$(echo "$ms" | jq -r '.due_on // "No due date"')
+            [ "$DUE" != "No due date" ] && DUE=$(echo "$DUE" | cut -c1-10)
+
+            if [ "$TOTAL" -gt 0 ]; then
+              PCT=$(echo "scale=0; $CLOSED * 100 / $TOTAL" | bc)
+            else
+              PCT=0
+            fi
+
+            FILLED=$(echo "scale=0; $PCT / 10" | bc)
+            BAR=""
+            for i in $(seq 1 10); do
+              [ "$i" -le "$FILLED" ] && BAR="${BAR}█" || BAR="${BAR}░"
+            done
+
+            MILESTONE_ROWS="${MILESTONE_ROWS}| **${TITLE}** | ${BAR} ${PCT}% | ${CLOSED}/${TOTAL} | ${DUE} |\n"
+          done < <(gh api "repos/$REPO/milestones" --paginate --jq '.[] | @json')
+
+          [ -z "$MILESTONE_ROWS" ] && MILESTONE_ROWS="| — | No open milestones | — | — |\n"
+
+          # ── Issue counts by label ────────────────────────────────────────────
+          TOTAL_OPEN=$(gh api "repos/$REPO/issues?state=open" --paginate --jq '[.[] | select(.pull_request == null)] | length')
+          BUG_COUNT=$(gh api "repos/$REPO/issues?state=open&labels=bug" --paginate --jq '[.[] | select(.pull_request == null)] | length')
+          ENHANCEMENT_COUNT=$(gh api "repos/$REPO/issues?state=open&labels=enhancement" --paginate --jq '[.[] | select(.pull_request == null)] | length')
+          HEALTH_COUNT=$(gh api "repos/$REPO/issues?state=open&labels=health-check" --paginate --jq '[.[] | select(.pull_request == null)] | length')
+
+          # ── Velocity: opened vs closed in last 7 days ───────────────────────
+          CLOSED_LAST_7=$(gh api "repos/$REPO/issues?state=closed&since=${WEEK_AGO}" \
+            --paginate \
+            --jq '[.[] | select(.pull_request == null)] | length')
+
+          OPENED_LAST_7=$(gh api "repos/$REPO/issues?state=all&since=${WEEK_AGO}" \
+            --paginate \
+            --jq "[.[] | select(.pull_request == null) | select(.created_at >= \"${WEEK_AGO}\")] | length")
+
+          if [ "$OPENED_LAST_7" -gt 0 ]; then
+            VELOCITY_RATIO=$(echo "scale=2; $CLOSED_LAST_7 / $OPENED_LAST_7" | bc)
+          else
+            VELOCITY_RATIO="N/A (no new issues)"
+          fi
+
+          if [ "$CLOSED_LAST_7" -ge "$OPENED_LAST_7" ]; then
+            VELOCITY_STATUS="Healthy — closing >= opening"
+          else
+            NET_DEBT=$((OPENED_LAST_7 - CLOSED_LAST_7))
+            VELOCITY_STATUS="Accumulating debt (+${NET_DEBT} net open)"
+          fi
+
+          # ── Stale issues (no activity in 14+ days) ───────────────────────────
+          STALE_ISSUES=$(gh api "repos/$REPO/issues?state=open&sort=updated&direction=asc" \
+            --paginate \
+            --jq "[.[] | select(.pull_request == null) | select(.updated_at <= \"${STALE_DATE}\")] | length")
+
+          if [ "$STALE_ISSUES" -eq 0 ]; then
+            STALE_BADGE="None — all issues active in the last 14 days"
+          else
+            STALE_BADGE="${STALE_ISSUES} issue(s) with no activity in 14+ days"
+          fi
+
+          # ── Write report to temp file (avoids heredoc/YAML escaping issues) ──
+          REPORT_FILE=$(mktemp)
+
+          printf '## Weekly Milestone Health Check — %s\n\n' "$REPORT_DATE" >> "$REPORT_FILE"
+          printf '>Auto-generated every Monday at 09:00 UTC. Trigger manually via `workflow_dispatch`.\n\n' >> "$REPORT_FILE"
+          printf '---\n\n' >> "$REPORT_FILE"
+
+          printf '### Milestone Progress\n\n' >> "$REPORT_FILE"
+          printf '| Milestone | Progress | Closed/Total | Due Date |\n' >> "$REPORT_FILE"
+          printf '|-----------|----------|-------------|----------|\n' >> "$REPORT_FILE"
+          printf "%b" "$MILESTONE_ROWS" >> "$REPORT_FILE"
+          printf '\n---\n\n' >> "$REPORT_FILE"
+
+          printf '### Issue Inventory (open)\n\n' >> "$REPORT_FILE"
+          printf '| Category | Count |\n' >> "$REPORT_FILE"
+          printf '|----------|-------|\n' >> "$REPORT_FILE"
+          printf '| Total open issues | %s |\n' "$TOTAL_OPEN" >> "$REPORT_FILE"
+          printf '| Bugs | %s |\n' "$BUG_COUNT" >> "$REPORT_FILE"
+          printf '| Enhancements | %s |\n' "$ENHANCEMENT_COUNT" >> "$REPORT_FILE"
+          printf '| Health-check issues | %s |\n' "$HEALTH_COUNT" >> "$REPORT_FILE"
+          printf '\n---\n\n' >> "$REPORT_FILE"
+
+          printf '### Velocity (last 7 days)\n\n' >> "$REPORT_FILE"
+          printf '| Metric | Value |\n' >> "$REPORT_FILE"
+          printf '|--------|-------|\n' >> "$REPORT_FILE"
+          printf '| Issues opened | %s |\n' "$OPENED_LAST_7" >> "$REPORT_FILE"
+          printf '| Issues closed | %s |\n' "$CLOSED_LAST_7" >> "$REPORT_FILE"
+          printf '| Close/open ratio | %s |\n' "$VELOCITY_RATIO" >> "$REPORT_FILE"
+          printf '| Status | %s |\n' "$VELOCITY_STATUS" >> "$REPORT_FILE"
+          printf '\n---\n\n' >> "$REPORT_FILE"
+
+          printf '### Stale Issues (no activity in 14+ days)\n\n' >> "$REPORT_FILE"
+          printf '%s\n\n' "$STALE_BADGE" >> "$REPORT_FILE"
+          printf '---\n\n' >> "$REPORT_FILE"
+
+          printf '_Generated by [weekly-health-check](https://github.com/%s/actions/workflows/weekly-health-check.yml) · [View all milestones](https://github.com/%s/milestones)_\n' \
+            "$REPO" "$REPO" >> "$REPORT_FILE"
+
+          # ── Create issue ─────────────────────────────────────────────────────
+          ISSUE_TITLE="Health Check: Milestone & Velocity Report (${REPORT_DATE})"
+          gh issue create \
+            --repo "$REPO" \
+            --title "$ISSUE_TITLE" \
+            --body-file "$REPORT_FILE" \
+            --label "health-check"
+
+          echo "Health check issue created for ${REPORT_DATE}"
+          rm -f "$REPORT_FILE"
