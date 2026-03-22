@@ -613,19 +613,7 @@ describe('Battle C: API error handling — gap coverage (#294)', () => {
     expect(res.status).not.toBe(500)
   })
 
-  // ── Duplicate issue_prefix → BUG: returns 500 instead of 409 ────────────────
-  //
-  // BUG (#294): POST /api/companies does not catch the unique constraint violation
-  // on issue_prefix. When a duplicate prefix is submitted, the DB throws PGlite error
-  // code 23505 which propagates unhandled and Hono returns 500.
-  //
-  // Expected: 409 with { error: "issue_prefix already in use" }
-  // Actual:   500 (unhandled exception)
-  //
-  // Fix required in apps/cli/src/server/routes/companies.ts POST handler:
-  //   catch the DB error, check err.code === '23505' → return c.json({ error: '...' }, 409)
-
-  it('BUG: POST /api/companies with duplicate issue_prefix returns 500 (should be 409)', async () => {
+  it('POST /api/companies with duplicate issue_prefix returns 409', async () => {
     const prefix = randomBytes(3).toString('hex').toUpperCase()
     const first = await app.request('/api/companies', {
       method: 'POST',
@@ -639,8 +627,7 @@ describe('Battle C: API error handling — gap coverage (#294)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Unique Corp Beta', issue_prefix: prefix }),
     })
-    // BUG: this is 500 today. When the bug is fixed, update this to toBe(409).
-    expect(second.status).toBe(500)
+    expect(second.status).toBe(409)
   })
 
   // ── Nonexistent route returns 404 (not 500) ────────────────────────────────

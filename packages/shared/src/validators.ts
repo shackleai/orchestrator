@@ -371,7 +371,7 @@ export const CreateSecretInput = z.object({
     /^[A-Za-z_][A-Za-z0-9_]*$/,
     'Secret name must be a valid env-var style identifier (letters, digits, underscores)',
   ),
-  value: nonEmpty,
+  value: z.string().min(1),
   created_by: z.string().optional(),
 })
 export type CreateSecretInput = z.infer<typeof CreateSecretInput>
