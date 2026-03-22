@@ -1,5 +1,5 @@
 /**
- * Paperclip parity tests — init --yes, config export, approval workflows
+ * Feature parity tests — init --yes, config export, approval workflows
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
