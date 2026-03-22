@@ -10,6 +10,7 @@ import { CostsPage } from './pages/costs'
 import { OrgChartPage } from './pages/org-chart'
 import { SettingsPage } from './pages/settings'
 import { TaskDetailPage } from './pages/task-detail'
+import { RunTranscriptPage } from './pages/run-transcript'
 import { DesignGuidePage } from './pages/design-guide'
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
         <Route index element={<OverviewPage />} />
         <Route path="agents" element={<AgentsPage />} />
         <Route path="agents/:id" element={<AgentDetailPage />} />
+        <Route path="agents/:id/runs/:runId" element={<RunTranscriptPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="tasks/:id" element={<TaskDetailPage />} />
         <Route path="board" element={<KanbanPage />} />
