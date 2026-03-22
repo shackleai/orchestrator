@@ -14,7 +14,7 @@ export { CursorAdapter } from './cursor.js'
 export { GeminiAdapter } from './gemini.js'
 export { KiroAdapter } from './kiro.js'
 export { OpenCodeAdapter } from './opencode.js'
-export { getLastSessionState, saveSessionState } from './session.js'
+export { getLastSessionState, saveSessionState, compactSession } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
 import { ProcessAdapter } from './process.js'

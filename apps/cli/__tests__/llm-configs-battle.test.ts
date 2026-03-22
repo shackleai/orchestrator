@@ -68,9 +68,7 @@ type LlmConfigRow = {
   model: string
   is_default: boolean
   max_tokens: number | null
-  // NOTE: PGlite serializes NUMERIC columns as strings (e.g. "0.70").
-  // We use parseFloat() in assertions that check temperature values.
-  temperature: number | string | null
+  temperature: number | null
   created_at: string
   updated_at: string
 }
@@ -170,8 +168,9 @@ describe('LLM Config Battle Test (#287)', () => {
     expect(config.model).toBe('claude-3-opus')
     expect(config.is_default).toBe(false)
     expect(config.max_tokens).toBe(4096)
-    // PGlite returns NUMERIC as string — coerce for comparison
-    expect(parseFloat(String(config.temperature))).toBeCloseTo(0.7)
+    // After #310 fix, NUMERIC fields are coerced to numbers in the response
+    expect(config.temperature).toBeCloseTo(0.7)
+    expect(typeof config.temperature).toBe('number')
     expect(typeof config.id).toBe('string')
     expect(typeof config.created_at).toBe('string')
     expect(typeof config.updated_at).toBe('string')
@@ -307,7 +306,8 @@ describe('LLM Config Battle Test (#287)', () => {
     expect(res.status).toBe(200)
     const updated = ((await res.json()) as { data: LlmConfigRow }).data
     expect(updated.max_tokens).toBe(8192)
-    expect(parseFloat(String(updated.temperature))).toBeCloseTo(1.5)
+    expect(updated.temperature).toBeCloseTo(1.5)
+    expect(typeof updated.temperature).toBe('number')
   })
 
   it('8. delete config → 200 { deleted: true }', async () => {
@@ -392,7 +392,8 @@ describe('LLM Config Battle Test (#287)', () => {
     expect(res.status).toBe(200)
     const unchanged = ((await res.json()) as { data: LlmConfigRow }).data
     expect(unchanged.model).toBe('gpt-3.5-turbo')
-    expect(parseFloat(String(unchanged.temperature))).toBeCloseTo(0.3)
+    expect(unchanged.temperature).toBeCloseTo(0.3)
+    expect(typeof unchanged.temperature).toBe('number')
   })
 
   // -------------------------------------------------------------------------

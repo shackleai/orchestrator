@@ -11,6 +11,7 @@ import { Hono } from 'hono'
 import type { DatabaseProvider } from '@shackleai/db'
 import type { User, UserPublic, UserSession, AuthResponse } from '@shackleai/shared'
 import { RegisterUserInput, LoginUserInput } from '@shackleai/shared'
+import { readConfig } from '../../config.js'
 
 const scryptAsync = promisify(scrypt)
 
@@ -136,6 +137,23 @@ export function authRouter(db: DatabaseProvider): Hono {
 
   // POST /api/auth/register
   app.post('/register', async (c) => {
+    // Registration lockdown: env var takes precedence over config file
+    const envFlag = process.env.SHACKLEAI_REGISTRATION_ENABLED
+    if (envFlag !== undefined) {
+      if (envFlag === 'false' || envFlag === '0') {
+        return c.json({ error: 'Registration is currently disabled' }, 403)
+      }
+    } else {
+      // Fall back to config file
+      const config = await readConfig()
+      if (
+        config &&
+        (config as unknown as Record<string, unknown>).registration_enabled === false
+      ) {
+        return c.json({ error: 'Registration is currently disabled' }, 403)
+      }
+    }
+
     const body = await c.req.json()
     const parsed = RegisterUserInput.safeParse(body)
 

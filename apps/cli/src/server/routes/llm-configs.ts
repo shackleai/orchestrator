@@ -10,6 +10,21 @@ import type { CompanyScopeVariables } from '../middleware/company-scope.js'
 import { companyScope } from '../middleware/company-scope.js'
 import { parsePagination } from '../pagination.js'
 
+/**
+ * Coerce PGlite NUMERIC columns from strings to numbers.
+ * PGlite serializes PostgreSQL NUMERIC type as strings (e.g. "0.70").
+ * This mapper ensures the API always returns proper numbers.
+ */
+function coerceNumericFields(config: LlmConfig): LlmConfig {
+  return {
+    ...config,
+    temperature:
+      config.temperature != null ? parseFloat(String(config.temperature)) : null,
+    max_tokens:
+      config.max_tokens != null ? Number(config.max_tokens) : null,
+  }
+}
+
 type Variables = CompanyScopeVariables
 
 export function llmConfigsRouter(db: DatabaseProvider): Hono<{ Variables: Variables }> {
@@ -29,7 +44,7 @@ export function llmConfigsRouter(db: DatabaseProvider): Hono<{ Variables: Variab
       `SELECT * FROM llm_configs WHERE company_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT $2 OFFSET $3`,
       [companyId, limit, offset],
     )
-    return c.json({ data: result.rows })
+    return c.json({ data: result.rows.map(coerceNumericFields) })
   })
 
   // POST /api/companies/:id/llm-configs — add model config
@@ -74,7 +89,7 @@ export function llmConfigsRouter(db: DatabaseProvider): Hono<{ Variables: Variab
         ],
       )
 
-      return c.json({ data: result.rows[0] }, 201)
+      return c.json({ data: coerceNumericFields(result.rows[0]) }, 201)
     } catch (err: unknown) {
       // Handle unique constraint violation (company_id, provider, model)
       const message = err instanceof Error ? err.message : String(err)
@@ -119,7 +134,7 @@ export function llmConfigsRouter(db: DatabaseProvider): Hono<{ Variables: Variab
         `SELECT * FROM llm_configs WHERE id = $1 AND company_id = $2`,
         [configId, companyId],
       )
-      return c.json({ data: result.rows[0] })
+      return c.json({ data: coerceNumericFields(result.rows[0]) })
     }
 
     // If setting as default, unset other defaults first
@@ -141,7 +156,7 @@ export function llmConfigsRouter(db: DatabaseProvider): Hono<{ Variables: Variab
         [configId, companyId, ...values],
       )
 
-      return c.json({ data: result.rows[0] })
+      return c.json({ data: coerceNumericFields(result.rows[0]) })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('unique') || message.includes('duplicate')) {

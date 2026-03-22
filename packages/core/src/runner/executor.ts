@@ -35,7 +35,7 @@ import type { Observatory } from '../observatory.js'
 import { ContextBuilder } from '../context-builder.js'
 import type { AdapterRegistry } from '../adapters/index.js'
 import type { AdapterContext, AdapterModule, AdapterResult, GoalAncestry } from '../adapters/index.js'
-import { getLastSessionState, saveSessionState } from '../adapters/index.js'
+import { getLastSessionState, saveSessionState, compactSession } from '../adapters/index.js'
 import type { RunnerResult } from '../scheduler.js'
 import type { GovernanceEngine } from '../governance/index.js'
 import { SecretsManager } from '../secrets/index.js'
@@ -432,14 +432,18 @@ export class HeartbeatExecutor {
         })
       }
 
-      // ── Step 9: Save session state ──────────────────────────────────
+      // ── Step 9: Save session state (with compaction) ────────────────
       if (adapterResult.sessionState) {
-        await saveSessionState(runId, adapterResult.sessionState, this.db)
-      }
+        // Compact session if it exceeds the context limit
+        const contextLimit =
+          typeof adapterConfig.context_limit === 'number'
+            ? adapterConfig.context_limit
+            : 100_000
+        const compacted = compactSession(adapterResult.sessionState, contextLimit)
+        const stateToSave = compacted ?? adapterResult.sessionState
+        await saveSessionState(runId, stateToSave, this.db)
 
-
-      if (adapterResult.sessionState) {
-        events.emit('session_saved', { sessionState: adapterResult.sessionState })
+        events.emit('session_saved', { sessionState: stateToSave })
       }
 
       // ── Step 9b: Record tool calls ─────────────────────────────────
