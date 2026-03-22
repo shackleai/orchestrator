@@ -53,6 +53,7 @@ import {
   type ActivityLogEntry,
 } from '@/lib/api'
 import { formatDate, formatRelativeTime } from '@/lib/utils'
+import { RenderedContent } from '@/components/RenderedContent'
 import { useToast } from '@/components/ui/toast'
 
 const STATUS_OPTIONS = [
@@ -377,7 +378,7 @@ function ThreadedCommentItem({
             </div>
           </div>
         ) : (
-          <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+          <RenderedContent content={comment.content} className="text-sm" />
         )}
       </div>
 
@@ -660,7 +661,7 @@ function EditableDescription({
       title="Click to edit description"
     >
       {value ? (
-        <p className="whitespace-pre-wrap">{value}</p>
+        <RenderedContent content={value} />
       ) : (
         <p className="text-muted-foreground italic">No description. Click to add one.</p>
       )}
