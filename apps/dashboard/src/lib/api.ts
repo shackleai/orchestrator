@@ -67,6 +67,14 @@ export interface HeartbeatRun {
   created_at: string
 }
 
+export interface HeartbeatRunEvent {
+  id: string
+  heartbeat_run_id: string
+  event_type: string
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
 export interface ActivityLogEntry {
   id: string
   company_id: string
@@ -136,6 +144,18 @@ export function fetchHeartbeats(
   const qs = params.toString()
   return fetchJson<HeartbeatRun[]>(
     `${BASE_URL}/companies/${companyId}/agents/${agentId}/heartbeats${qs ? `?${qs}` : ''}`,
+  )
+}
+
+export function fetchHeartbeatRun(companyId: string, runId: string) {
+  return fetchJson<HeartbeatRun>(
+    `${BASE_URL}/companies/${companyId}/heartbeats/${runId}`,
+  )
+}
+
+export function fetchHeartbeatRunEvents(companyId: string, runId: string) {
+  return fetchJson<HeartbeatRunEvent[]>(
+    `${BASE_URL}/companies/${companyId}/heartbeats/${runId}/events`,
   )
 }
 
