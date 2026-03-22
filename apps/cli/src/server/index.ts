@@ -144,7 +144,7 @@ export function createApp(db: DatabaseProvider, options?: CreateAppOptions): Hon
   // From dist/server/ → ../../ = apps/cli/ → ../dashboard/dist = apps/dashboard/dist
   const dashboardDist = path.resolve(__dirname, '..', '..', '..', 'dashboard', 'dist')
 
-  if (fs.existsSync(dashboardDist)) {
+  if (fs.existsSync(dashboardDist) && fs.existsSync(path.join(dashboardDist, 'index.html'))) {
     // Serve static assets (JS, CSS, images)
     app.use(
       '/assets/*',
