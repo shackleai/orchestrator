@@ -5,7 +5,6 @@ import { usePollingInterval, POLLING_INTERVALS } from '@/hooks/usePolling'
 import { useState } from 'react'
 import {
   ArrowLeft,
-  Bot,
   ChevronDown,
   ChevronRight,
   Clock,
