@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { Settings, Sparkles, ExternalLink, Eye, EyeOff, Key } from 'lucide-react'
+import { Settings, Sparkles, ExternalLink, Eye, EyeOff, Key, LogOut } from 'lucide-react'
+import { clearAuth } from '@/lib/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -306,6 +307,23 @@ export function SettingsPage() {
 
       {/* LLM API Keys */}
       {companyId && <LlmKeysCard companyId={companyId} />}
+
+      {/* Session */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Session</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { clearAuth(); window.location.reload() }}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Disconnect & Clear API Key
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* License */}
       <Card>

@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { DashboardLayout } from './layouts/DashboardLayout'
 import { OverviewPage } from './pages/overview'
@@ -12,8 +13,20 @@ import { SettingsPage } from './pages/settings'
 import { TaskDetailPage } from './pages/task-detail'
 import { RunTranscriptPage } from './pages/run-transcript'
 import { DesignGuidePage } from './pages/design-guide'
+import { LoginPage } from './pages/login'
+import { getToken } from './lib/auth'
 
 export function App() {
+  const [authenticated, setAuthenticated] = useState(() => !!getToken())
+
+  const handleAuthenticated = useCallback(() => {
+    setAuthenticated(true)
+  }, [])
+
+  if (!authenticated) {
+    return <LoginPage onAuthenticated={handleAuthenticated} />
+  }
+
   return (
     <Routes>
       <Route element={<DashboardLayout />}>

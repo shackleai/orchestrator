@@ -18,9 +18,15 @@ export async function apiClient(
   const baseUrl = `http://127.0.0.1:${port}`
   const url = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`
 
+  const apiKey = process.env.SHACKLEAI_API_KEY ?? (config as unknown as Record<string, unknown>).apiKey as string | undefined
+  const authHeaders: Record<string, string> = {}
+  if (apiKey) {
+    authHeaders['Authorization'] = `Bearer ${apiKey}`
+  }
+
   const res = await fetch(url, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders, ...options?.headers },
   })
 
   return res

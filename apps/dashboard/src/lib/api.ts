@@ -1,3 +1,5 @@
+import { getAuthHeaders } from './auth'
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 interface ApiResponse<T> {
@@ -5,7 +7,7 @@ interface ApiResponse<T> {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url)
+  const res = await fetch(url, { headers: getAuthHeaders() })
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`)
   }
@@ -307,7 +309,7 @@ export async function saveLlmKeys(
 ): Promise<LlmKeysData> {
   const res = await fetch(`${BASE_URL}/companies/${companyId}/llm-keys`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(keys),
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
@@ -319,7 +321,7 @@ export async function saveLlmKeys(
 async function patchJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -337,7 +339,7 @@ async function patchJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 async function deleteJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { method: 'DELETE' })
+  const res = await fetch(url, { method: 'DELETE', headers: getAuthHeaders() })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
     try {
@@ -355,7 +357,7 @@ async function deleteJson<T>(url: string): Promise<T> {
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
