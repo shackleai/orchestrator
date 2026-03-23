@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-amber: oklch(0.82 0.17 80);
   --color-amber-foreground: oklch(0.25 0.05 60);
