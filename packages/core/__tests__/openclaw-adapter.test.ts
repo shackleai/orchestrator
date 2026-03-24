@@ -41,12 +41,15 @@ describe('OpenClawAdapter', () => {
     expect(adapter.label).toBe('OpenClaw Agent')
   })
 
-  it('returns error when entrypoint is missing from adapterConfig', async () => {
-    const ctx = makeCtx({ adapterConfig: { pythonPath: 'node' } })
+  it('uses CLI mode when entrypoint is not provided', async () => {
+    // Without entrypoint, adapter should attempt CLI mode (npx openclaw agent)
+    // This will fail in CI (no OpenClaw installed) but should not error with "entrypoint required"
+    const ctx = makeCtx({ adapterConfig: { agent: 'main' } })
     const result = await adapter.execute(ctx)
 
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain('adapterConfig.entrypoint is required')
+    // CLI mode attempted — either works (exit 0) or fails to spawn (exit 127)
+    // but should NOT return "entrypoint is required"
+    expect(result.stderr).not.toContain('adapterConfig.entrypoint is required')
   })
 
   it('returns error when entrypoint file does not exist', async () => {
