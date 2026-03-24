@@ -157,8 +157,8 @@ export class ClaudeAdapter implements AdapterModule {
       '--print', fullPrompt,
       '--output-format', 'text',
       '--dangerously-skip-permissions',
-      '--allowedTools', 'Bash,Read,Write,Edit',
-      '--bare',
+      '--allowedTools', 'Bash,Read,Write,Edit,WebFetch',
+      '--no-session-persistence',
       '--max-budget-usd', '5',
     ]
     if (model) {
