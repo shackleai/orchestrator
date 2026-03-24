@@ -70,49 +70,15 @@ export class OpenClawAdapter implements AdapterModule {
 
   async execute(ctx: AdapterContext): Promise<AdapterResult> {
     const entrypoint = ctx.adapterConfig.entrypoint as string | undefined
-    if (!entrypoint) {
-      return {
-        exitCode: 1,
-        stdout: '',
-        stderr: 'adapterConfig.entrypoint is required for openclaw adapter',
-      }
-    }
+    const agentName = (ctx.adapterConfig.agent as string) ?? 'main'
+    const useCli = !entrypoint
 
-    // Validate entrypoint file exists before spawning
-    try {
-      await access(entrypoint, constants.R_OK)
-    } catch {
-      return {
-        exitCode: 1,
-        stdout: '',
-        stderr: `Entrypoint not found or not readable: ${entrypoint}`,
-      }
-    }
-
-    const pythonPath = (ctx.adapterConfig.pythonPath as string) ?? DEFAULT_PYTHON
     const timeoutMs =
       typeof ctx.adapterConfig.timeout === 'number'
         ? ctx.adapterConfig.timeout * 1000
         : DEFAULT_TIMEOUT_MS
 
-    // Build the JSON task payload
-    const taskPayload = JSON.stringify({
-      task: ctx.task ?? '',
-      agentId: ctx.agentId,
-      companyId: ctx.companyId,
-      heartbeatRunId: ctx.heartbeatRunId,
-      sessionState: ctx.sessionState ?? null,
-      ancestry: ctx.ancestry ?? null,
-      systemContext: ctx.systemContext ?? null,
-    })
-
-    const sessionId = ctx.sessionState ?? ctx.heartbeatRunId
-
-    const args = [entrypoint, '--task', taskPayload, '--session', sessionId]
-
     // Build environment: inject SHACKLEAI_* vars
-    // Note: adapterConfig.envFile is supported for documentation purposes but
-    // env file parsing is not implemented — users should set env vars directly.
     const shackleEnv: Record<string, string> = {
       ...ctx.env,
       SHACKLEAI_RUN_ID: ctx.heartbeatRunId,
@@ -130,6 +96,55 @@ export class OpenClawAdapter implements AdapterModule {
       env.SHACKLEAI_SESSION_STATE = ctx.sessionState
     }
 
+    let command: string
+    let args: string[]
+
+    if (useCli) {
+      // CLI mode: call `npx openclaw agent --local --agent <name> --message <task>`
+      const taskMessage = ctx.systemContext
+        ? `${ctx.systemContext}\n\nTask: ${ctx.task ?? 'Check assigned tasks and do the work'}`
+        : ctx.task ?? 'Check assigned tasks and do the work'
+
+      command = IS_WIN ? 'npx.cmd' : 'npx'
+      args = [
+        'openclaw', 'agent',
+        '--local',
+        '--agent', agentName,
+        '--message', taskMessage,
+        '--json',
+      ]
+
+      if (ctx.sessionState) {
+        args.push('--session-id', ctx.sessionState)
+      }
+    } else {
+      // Legacy Python entrypoint mode
+      try {
+        await access(entrypoint, constants.R_OK)
+      } catch {
+        return {
+          exitCode: 1,
+          stdout: '',
+          stderr: `Entrypoint not found or not readable: ${entrypoint}`,
+        }
+      }
+
+      const pythonPath = (ctx.adapterConfig.pythonPath as string) ?? DEFAULT_PYTHON
+      const taskPayload = JSON.stringify({
+        task: ctx.task ?? '',
+        agentId: ctx.agentId,
+        companyId: ctx.companyId,
+        heartbeatRunId: ctx.heartbeatRunId,
+        sessionState: ctx.sessionState ?? null,
+        ancestry: ctx.ancestry ?? null,
+        systemContext: ctx.systemContext ?? null,
+      })
+
+      const sessionId = ctx.sessionState ?? ctx.heartbeatRunId
+      command = pythonPath
+      args = [entrypoint, '--task', taskPayload, '--session', sessionId]
+    }
+
     return new Promise<AdapterResult>((resolve) => {
       const stdoutChunks: Buffer[] = []
       const stderrChunks: Buffer[] = []
@@ -138,7 +153,7 @@ export class OpenClawAdapter implements AdapterModule {
       let killed = false
       let killTimer: ReturnType<typeof setTimeout> | undefined
 
-      const child = spawn(pythonPath, args, {
+      const child = spawn(command, args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: !IS_WIN,
