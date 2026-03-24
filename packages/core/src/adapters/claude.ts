@@ -150,7 +150,14 @@ export class ClaudeAdapter implements AdapterModule {
       env.CLAUDE_MODEL = model
     }
 
-    const args = ['--print', fullPrompt]
+    const args = [
+      '--print', fullPrompt,
+      '--output-format', 'text',
+      '--dangerously-skip-permissions',
+      '--allowedTools', 'Bash,Read,Write,Edit',
+      '--bare',
+      '--max-budget-usd', '5',
+    ]
     if (model) {
       args.unshift('--model', model)
     }
