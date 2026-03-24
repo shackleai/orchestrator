@@ -95,9 +95,12 @@ export class ClaudeAdapter implements AdapterModule {
     if (ctx.assignedTasks && ctx.assignedTasks.length > 0) {
       const taskList = ctx.assignedTasks
         .map((t: { title: string; description?: string | null }) =>
-          `- ${t.title}${t.description ? ': ' + t.description : ''}`)
+          `- ${t.title}${t.description ? '\n  ' + t.description : ''}`)
         .join('\n')
-      fullPrompt = `${prompt}\n\nYour assigned task:\n${taskList}`
+      fullPrompt = `${prompt}\n\nYour assigned task (DO THIS NOW, nothing else):\n${taskList}`
+    } else if (ctx.task) {
+      // Fallback: use task ID/title from context
+      fullPrompt = `${prompt}\n\nYour assigned task (DO THIS NOW, nothing else): ${ctx.task}`
     }
 
     if (ctx.ancestry) {
