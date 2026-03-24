@@ -211,16 +211,14 @@ describe('wakeup endpoint — LLM key pre-flight', () => {
     expect(body.error).toMatch(/OpenAI/i)
   })
 
-  it('returns 400 MISSING_LLM_KEY when Claude adapter and ANTHROPIC_API_KEY absent', async () => {
+  it('allows Claude adapter without ANTHROPIC_API_KEY (uses CLI subscription)', async () => {
     delete process.env.ANTHROPIC_API_KEY
-    const app = createApp(db, { skipAuth: true, scheduler: makeScheduler() })
+    const app = createApp(db, { skipAuth: true, scheduler: makeScheduler({ exitCode: 0, stdout: '', stderr: '' }) })
     const companyId = await createCompany(app)
     const agentId = await createAgent(app, companyId, { adapter_type: AdapterType.Claude })
     const res = await wakeup(app, companyId, agentId)
-    expect(res.status).toBe(400)
-    const body = (await res.json()) as { code: string; error: string }
-    expect(body.code).toBe('MISSING_LLM_KEY')
-    expect(body.error).toMatch(/Anthropic/i)
+    // Claude adapter no longer requires API key — uses CLI subscription
+    expect(res.status).toBe(200)
   })
 
   it('passes pre-flight when ANTHROPIC_API_KEY present for Claude adapter', async () => {

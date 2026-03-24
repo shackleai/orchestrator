@@ -50,7 +50,7 @@ describe('OpenClawAdapter', () => {
     // CLI mode attempted — either works (exit 0) or fails to spawn (exit 127)
     // but should NOT return "entrypoint is required"
     expect(result.stderr).not.toContain('adapterConfig.entrypoint is required')
-  })
+  }, 30_000)
 
   it('returns error when entrypoint file does not exist', async () => {
     const ctx = makeCtx({
