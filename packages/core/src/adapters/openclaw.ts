@@ -10,8 +10,9 @@
  */
 
 import type { ChildProcess } from 'node:child_process'
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { AdapterContext, AdapterModule, AdapterResult } from './adapter.js'
 import { getSafeEnv } from './env.js'
 import { gracefulKill, KILL_GRACE_MS } from './kill.js'
@@ -101,18 +102,44 @@ export class OpenClawAdapter implements AdapterModule {
 
     if (useCli) {
       // CLI mode: call `npx openclaw agent --local --agent <name> --message <task>`
-      const taskMessage = ctx.systemContext
-        ? `${ctx.systemContext}\n\nTask: ${ctx.task ?? 'Check assigned tasks and do the work'}`
-        : ctx.task ?? 'Check assigned tasks and do the work'
+      // Resolve openclaw CLI path — avoid npx spawn issues on Windows
+      let openclawBin = ''
+      if (IS_WIN) {
+        try {
+          const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim()
+          openclawBin = join(globalRoot, 'openclaw', 'openclaw.mjs')
+        } catch {
+          // fallback below
+        }
+      }
 
-      command = IS_WIN ? 'npx.cmd' : 'npx'
-      args = [
-        'openclaw', 'agent',
-        '--local',
-        '--agent', agentName,
-        '--message', taskMessage,
-        '--json',
-      ]
+      // Keep message short for spawn args — put full context in env var
+      const shortMessage = ctx.task ?? 'Check assigned tasks and do the work'
+
+      // Store full context in env var for OpenClaw to read
+      if (ctx.systemContext) {
+        env.SHACKLEAI_CONTEXT = ctx.systemContext
+      }
+
+      if (IS_WIN && openclawBin) {
+        command = process.execPath // node
+        args = [
+          openclawBin, 'agent',
+          '--local',
+          '--agent', agentName,
+          '--message', shortMessage,
+          '--json',
+        ]
+      } else {
+        command = IS_WIN ? 'npx.cmd' : 'npx'
+        args = [
+          'openclaw', 'agent',
+          '--local',
+          '--agent', agentName,
+          '--message', shortMessage,
+          '--json',
+        ]
+      }
 
       if (ctx.sessionState) {
         args.push('--session-id', ctx.sessionState)

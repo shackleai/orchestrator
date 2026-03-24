@@ -545,7 +545,7 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     const agent = agentResult.rows[0]
     const adapterType = agent.adapter_type
     const needsOpenAI = ['crewai', 'openclaw'].includes(adapterType)
-    const needsAnthropic = adapterType === 'claude'
+    // Claude adapter uses CLI subscription — no API key check needed
 
     if (needsOpenAI && !process.env.OPENAI_API_KEY) {
       return c.json({
