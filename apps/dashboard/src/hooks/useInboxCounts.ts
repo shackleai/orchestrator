@@ -11,14 +11,14 @@ import { usePollingInterval, POLLING_INTERVALS } from './usePolling'
  * Falls back to 'default' when no explicit user id is available
  * (the API requires the parameter).
  */
-export function useInboxCounts(userOrAgentId = 'default') {
+export function useInboxCounts(userOrAgentId?: string) {
   const companyId = useCompanyId()
   const refetchInterval = usePollingInterval(POLLING_INTERVALS.inbox)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['inbox-counts', companyId, userOrAgentId],
-    queryFn: () => fetchInboxCounts(companyId!, userOrAgentId),
-    enabled: !!companyId,
+    queryFn: () => fetchInboxCounts(companyId!, userOrAgentId!),
+    enabled: !!companyId && !!userOrAgentId,
     refetchInterval,
     staleTime: 5_000,
   })
