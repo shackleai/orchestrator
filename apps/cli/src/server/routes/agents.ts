@@ -553,11 +553,19 @@ export function agentsRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
         code: 'MISSING_LLM_KEY',
       }, 400)
     }
+    // Claude adapter spawns `claude` CLI which uses the user's Claude subscription.
+    // No separate ANTHROPIC_API_KEY needed — only warn if claude CLI is not installed.
     if (needsAnthropic && !process.env.ANTHROPIC_API_KEY) {
-      return c.json({
-        error: 'Anthropic API key not configured. Go to Settings \u2192 LLM API Keys and add your Anthropic key, then restart the server.',
-        code: 'MISSING_LLM_KEY',
-      }, 400)
+      // Check if claude CLI is available (Max subscription)
+      try {
+        require('child_process').execSync('claude --version', { stdio: 'ignore' })
+        // claude CLI found — proceed without API key
+      } catch {
+        return c.json({
+          error: 'Claude not available. Either install Claude Code CLI (claude.com/claude-code) or add an Anthropic API key in Settings → LLM API Keys.',
+          code: 'MISSING_LLM_KEY',
+        }, 400)
+      }
     }
 
     if (!scheduler) {
