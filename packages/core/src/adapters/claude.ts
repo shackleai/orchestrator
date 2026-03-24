@@ -88,11 +88,16 @@ export class ClaudeAdapter implements AdapterModule {
       }
     }
 
-    // Prepend system context and ancestry to the prompt
+    // Build full prompt: agent role + assigned task
     let fullPrompt = prompt
 
-    if (ctx.systemContext) {
-      fullPrompt = `${ctx.systemContext}\n\n${fullPrompt}`
+    // Include assigned tasks if available
+    if (ctx.assignedTasks && ctx.assignedTasks.length > 0) {
+      const taskList = ctx.assignedTasks
+        .map((t: { title: string; description?: string | null }) =>
+          `- ${t.title}${t.description ? ': ' + t.description : ''}`)
+        .join('\n')
+      fullPrompt = `${prompt}\n\nYour assigned task:\n${taskList}`
     }
 
     if (ctx.ancestry) {
@@ -156,8 +161,12 @@ export class ClaudeAdapter implements AdapterModule {
       let killed = false
       let killTimer: ReturnType<typeof setTimeout> | undefined
 
+      // Run in temp directory to avoid picking up CLAUDE.md from working directory
+      const cwd = ctx.adapterConfig.cwd as string | undefined ?? (IS_WIN ? process.env.TEMP || 'C:\\Windows\\Temp' : '/tmp')
+
       const child = spawn(IS_WIN ? 'claude.cmd' : 'claude', args, {
         env,
+        cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: !IS_WIN,
         shell: IS_WIN,
