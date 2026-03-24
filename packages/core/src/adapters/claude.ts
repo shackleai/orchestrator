@@ -156,10 +156,11 @@ export class ClaudeAdapter implements AdapterModule {
       let killed = false
       let killTimer: ReturnType<typeof setTimeout> | undefined
 
-      const child = spawn('claude', args, {
+      const child = spawn(IS_WIN ? 'claude.cmd' : 'claude', args, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: !IS_WIN,
+        shell: IS_WIN,
       })
 
       this.activeChild = child
@@ -215,8 +216,9 @@ export class ClaudeAdapter implements AdapterModule {
 
   async testEnvironment(): Promise<{ ok: boolean; error?: string }> {
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-      const child = spawn('claude', ['--version'], {
+      const child = spawn(IS_WIN ? 'claude.cmd' : 'claude', ['--version'], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: IS_WIN,
       })
 
       child.stdout.on('data', () => {
