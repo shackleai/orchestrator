@@ -14,6 +14,7 @@ export { CursorAdapter } from './cursor.js'
 export { GeminiAdapter } from './gemini.js'
 export { KiroAdapter } from './kiro.js'
 export { OpenCodeAdapter } from './opencode.js'
+export { LlmAdapter } from './llm.js'
 export { getLastSessionState, saveSessionState, compactSession } from './session.js'
 
 import type { AdapterModule } from './adapter.js'
@@ -28,6 +29,7 @@ import { CursorAdapter } from './cursor.js'
 import { GeminiAdapter } from './gemini.js'
 import { KiroAdapter } from './kiro.js'
 import { OpenCodeAdapter } from './opencode.js'
+import { LlmAdapter } from './llm.js'
 
 /**
  * AdapterRegistry — maps adapter_type strings to AdapterModule instances.
@@ -49,6 +51,7 @@ export class AdapterRegistry {
     this.register(new GeminiAdapter())
     this.register(new KiroAdapter())
     this.register(new OpenCodeAdapter())
+    this.register(new LlmAdapter())
   }
 
   /** Register an adapter module. Overwrites any existing adapter with the same type. */
