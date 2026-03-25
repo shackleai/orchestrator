@@ -8,6 +8,7 @@ import {
   Activity,
   DollarSign,
   Network,
+  Shield,
   Settings,
   Menu,
   X,
@@ -47,6 +48,7 @@ const navItems: NavItem[] = [
   { to: '/board', icon: LayoutGrid, label: 'Board' },
   { to: '/activity', icon: Activity, label: 'Activity', badgeKey: 'new_comments' },
   { to: '/costs', icon: DollarSign, label: 'Costs' },
+  { to: '/policies', icon: Shield, label: 'Policies' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
