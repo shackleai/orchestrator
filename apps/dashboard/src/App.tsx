@@ -13,6 +13,8 @@ import { SettingsPage } from './pages/settings'
 import { TaskDetailPage } from './pages/task-detail'
 import { RunTranscriptPage } from './pages/run-transcript'
 import { PoliciesPage } from './pages/policies'
+import { SessionsPage } from './pages/sessions'
+import { SessionDetailPage } from './pages/session-detail'
 import { DesignGuidePage } from './pages/design-guide'
 import { LoginPage } from './pages/login'
 import { getToken } from './lib/auth'
@@ -38,6 +40,8 @@ export function App() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="tasks/:id" element={<TaskDetailPage />} />
         <Route path="board" element={<KanbanPage />} />
+        <Route path="sessions" element={<SessionsPage />} />
+        <Route path="sessions/:sessionId" element={<SessionDetailPage />} />
         <Route path="activity" element={<ActivityPage />} />
         <Route path="costs" element={<CostsPage />} />
         <Route path="org-chart" element={<OrgChartPage />} />

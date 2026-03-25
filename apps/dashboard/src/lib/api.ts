@@ -149,6 +149,24 @@ export function fetchHeartbeats(
   )
 }
 
+export function fetchAllHeartbeats(
+  companyId: string,
+  filters?: { status?: string; agent_id?: string },
+  pagination?: { limit: number; offset: number },
+) {
+  const params = new URLSearchParams()
+  if (filters?.status) params.set('status', filters.status)
+  if (filters?.agent_id) params.set('agent_id', filters.agent_id)
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
+  const qs = params.toString()
+  return fetchJson<HeartbeatRun[]>(
+    `${BASE_URL}/companies/${companyId}/heartbeats${qs ? `?${qs}` : ''}`,
+  )
+}
+
 export function fetchHeartbeatRun(companyId: string, runId: string) {
   return fetchJson<HeartbeatRun>(
     `${BASE_URL}/companies/${companyId}/heartbeats/${runId}`,
