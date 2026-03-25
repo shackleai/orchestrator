@@ -20,6 +20,7 @@ describe('AdapterRegistry', () => {
     expect(registry.has('cursor')).toBe(true)
     expect(registry.has('gemini')).toBe(true)
     expect(registry.has('kiro')).toBe(true)
+    expect(registry.has('llm')).toBe(true)
 
     expect(registry.get('process')).toBeInstanceOf(ProcessAdapter)
     expect(registry.get('http')).toBeInstanceOf(HttpAdapter)
@@ -78,7 +79,7 @@ describe('AdapterRegistry', () => {
     registry.register(mockAdapter)
 
     const all = registry.list()
-    expect(all).toHaveLength(12) // 11 built-in + 1 custom
+    expect(all).toHaveLength(13) // 12 built-in + 1 custom
     expect(all.map((a) => a.type).sort()).toEqual([
       'claude',
       'codex',
@@ -88,6 +89,7 @@ describe('AdapterRegistry', () => {
       'gemini',
       'http',
       'kiro',
+      'llm',
       'mcp',
       'openclaw',
       'opencode',
