@@ -1,6 +1,6 @@
 {
   "name": "@shackleai/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core orchestration engine for ShackleAI — agent lifecycle, task scheduling, governance, and MCP integration",
   "keywords": [
     "ai",
