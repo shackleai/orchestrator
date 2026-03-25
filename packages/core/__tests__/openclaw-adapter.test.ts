@@ -280,6 +280,96 @@ for (let i = 0; i < 12; i++) { process.stdout.write(chunk); }`,
     unlinkSync(script)
   })
 
+  it('injects LLM API keys from ctx.env (SecretsManager) into subprocess', async () => {
+    const script = createTempScript(
+      'llm-keys-agent.js',
+      `const e = process.env;
+process.stdout.write(JSON.stringify({
+  openai: e.OPENAI_API_KEY || '',
+  anthropic: e.ANTHROPIC_API_KEY || '',
+  google: e.GOOGLE_API_KEY || '',
+  deepseek: e.DEEPSEEK_API_KEY || '',
+}));`,
+    )
+
+    const ctx = makeCtx({
+      adapterConfig: { pythonPath: 'node', entrypoint: script },
+      env: {
+        OPENAI_API_KEY: 'sk-test-openai-123',
+        ANTHROPIC_API_KEY: 'sk-ant-test-456',
+        GOOGLE_API_KEY: 'AIza-test-789',
+        DEEPSEEK_API_KEY: 'sk-ds-test-000',
+      },
+    })
+    const result = await adapter.execute(ctx)
+
+    expect(result.exitCode).toBe(0)
+    const parsed = JSON.parse(result.stdout) as Record<string, string>
+    expect(parsed.openai).toBe('sk-test-openai-123')
+    expect(parsed.anthropic).toBe('sk-ant-test-456')
+    expect(parsed.google).toBe('AIza-test-789')
+    expect(parsed.deepseek).toBe('sk-ds-test-000')
+
+    unlinkSync(script)
+  })
+
+  it('resolves lowercase secret names to standard LLM env vars', async () => {
+    const script = createTempScript(
+      'llm-lowercase-agent.js',
+      `const e = process.env;
+process.stdout.write(JSON.stringify({
+  openai: e.OPENAI_API_KEY || '',
+  google: e.GOOGLE_API_KEY || '',
+}));`,
+    )
+
+    const ctx = makeCtx({
+      adapterConfig: { pythonPath: 'node', entrypoint: script },
+      env: {
+        openai_api_key: 'sk-lowercase-openai',
+        'google-api-key': 'AIza-kebab-google',
+      },
+    })
+    const result = await adapter.execute(ctx)
+
+    expect(result.exitCode).toBe(0)
+    const parsed = JSON.parse(result.stdout) as Record<string, string>
+    expect(parsed.openai).toBe('sk-lowercase-openai')
+    expect(parsed.google).toBe('AIza-kebab-google')
+
+    unlinkSync(script)
+  })
+
+  it('does not override existing env vars with SecretsManager values', async () => {
+    // If OPENAI_API_KEY is already in the host env and allowed through getSafeEnv,
+    // we should NOT override it with the SecretsManager value.
+    // Since getSafeEnv pulls from process.env, we test by providing the key
+    // in ctx.env which flows through shackleEnv → getSafeEnv extra → env.
+    // The standard name in ctx.env gets set first, then resolveLlmApiKeys
+    // should NOT override it.
+    const script = createTempScript(
+      'no-override-agent.js',
+      `process.stdout.write(process.env.OPENAI_API_KEY || 'MISSING');`,
+    )
+
+    const ctx = makeCtx({
+      adapterConfig: { pythonPath: 'node', entrypoint: script },
+      env: {
+        // Standard name — flows through shackleEnv into getSafeEnv extra
+        OPENAI_API_KEY: 'sk-from-secrets-standard',
+        // Lowercase variant — resolveLlmApiKeys should NOT override the above
+        openai_api_key: 'sk-should-not-be-used',
+      },
+    })
+    const result = await adapter.execute(ctx)
+
+    expect(result.exitCode).toBe(0)
+    // The standard-name key from ctx.env wins (set via getSafeEnv extra merge)
+    expect(result.stdout).toBe('sk-from-secrets-standard')
+
+    unlinkSync(script)
+  })
+
   it('testEnvironment detects available runtime', async () => {
     // testEnvironment checks for python3/python — we can't guarantee Python
     // is installed, so we just verify it returns a valid shape

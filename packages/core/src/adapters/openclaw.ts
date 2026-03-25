@@ -62,6 +62,66 @@ function parseResultBlock(stdout: string): ShackleAIResult | null {
   }
 }
 
+/**
+ * Well-known LLM provider API key environment variable names.
+ * Maps standard env var names to possible secret name variations
+ * that users might store in SecretsManager.
+ */
+const LLM_API_KEY_MAP: ReadonlyArray<{
+  envVar: string
+  secretNames: readonly string[]
+}> = [
+  {
+    envVar: 'OPENAI_API_KEY',
+    secretNames: ['OPENAI_API_KEY', 'openai_api_key', 'openai-api-key'],
+  },
+  {
+    envVar: 'ANTHROPIC_API_KEY',
+    secretNames: ['ANTHROPIC_API_KEY', 'anthropic_api_key', 'anthropic-api-key'],
+  },
+  {
+    envVar: 'GOOGLE_API_KEY',
+    secretNames: ['GOOGLE_API_KEY', 'google_api_key', 'google-api-key'],
+  },
+  {
+    envVar: 'DEEPSEEK_API_KEY',
+    secretNames: ['DEEPSEEK_API_KEY', 'deepseek_api_key', 'deepseek-api-key'],
+  },
+]
+
+/**
+ * Resolve LLM API keys from the adapter context env (populated by SecretsManager)
+ * and return them mapped to standard environment variable names.
+ *
+ * Only sets a key if:
+ * 1. A matching secret exists in ctx.env
+ * 2. The target env var is not already set in the current env
+ *
+ * This ensures SecretsManager is the single source of truth while
+ * allowing fallback to OpenClaw's own config or host env vars.
+ */
+function resolveLlmApiKeys(
+  ctxEnv: Record<string, string>,
+  currentEnv: Record<string, string>,
+): Record<string, string> {
+  const resolved: Record<string, string> = {}
+
+  for (const mapping of LLM_API_KEY_MAP) {
+    // Skip if the env var is already set (don't override existing values)
+    if (currentEnv[mapping.envVar]) continue
+
+    // Try each possible secret name variation
+    for (const secretName of mapping.secretNames) {
+      if (ctxEnv[secretName]) {
+        resolved[mapping.envVar] = ctxEnv[secretName]
+        break
+      }
+    }
+  }
+
+  return resolved
+}
+
 export class OpenClawAdapter implements AdapterModule {
   readonly type = 'openclaw'
   readonly label = 'OpenClaw Agent'
@@ -88,6 +148,12 @@ export class OpenClawAdapter implements AdapterModule {
     }
 
     const env: Record<string, string> = getSafeEnv(shackleEnv)
+
+    // Inject LLM API keys from SecretsManager (via ctx.env) into the
+    // child process environment. Only sets keys that are not already present,
+    // allowing OpenClaw to fall back to its own config or host env vars.
+    const llmKeys = resolveLlmApiKeys(ctx.env, env)
+    Object.assign(env, llmKeys)
 
     if (ctx.task) {
       env.SHACKLEAI_TASK_ID = ctx.task
