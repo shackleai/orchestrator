@@ -316,6 +316,51 @@ export async function saveLlmKeys(
   return ((await res.json()) as ApiResponse<LlmKeysData>).data
 }
 
+// --- Secrets ---
+
+export interface SecretListItem {
+  id: string
+  name: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function fetchSecrets(companyId: string) {
+  return fetchJson<SecretListItem[]>(`${BASE_URL}/companies/${companyId}/secrets`)
+}
+
+export async function storeSecret(
+  companyId: string,
+  name: string,
+  value: string,
+): Promise<SecretListItem> {
+  const res = await fetch(`${BASE_URL}/companies/${companyId}/secrets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ name, value }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`API error: ${res.status} ${text}`)
+  }
+  return ((await res.json()) as ApiResponse<SecretListItem>).data
+}
+
+export async function deleteSecret(
+  companyId: string,
+  name: string,
+): Promise<void> {
+  const res = await fetch(`${BASE_URL}/companies/${companyId}/secrets/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`API error: ${res.status} ${text}`)
+  }
+}
+
 // --- Mutation helpers ---
 
 async function patchJson<T>(url: string, body: unknown): Promise<T> {

@@ -1,7 +1,18 @@
 import { useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCompanyId } from '@/hooks/useCompanyId'
-import { Settings, Sparkles, ExternalLink, Eye, EyeOff, Key, LogOut } from 'lucide-react'
+import {
+  Settings,
+  Sparkles,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Key,
+  LogOut,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+} from 'lucide-react'
 import { clearAuth } from '@/lib/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -10,14 +21,62 @@ import { Input } from '@/components/ui/input'
 import {
   fetchCompany,
   fetchLicense,
-  fetchLlmKeys,
-  saveLlmKeys,
+  fetchSecrets,
+  storeSecret,
+  deleteSecret,
   type Company,
   type LicenseKey,
-  type LlmKeysData,
+  type SecretListItem,
 } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
+
+// ---------------------------------------------------------------------------
+// Provider definitions
+// ---------------------------------------------------------------------------
+
+interface ProviderDef {
+  name: string
+  label: string
+  envVar: string
+  placeholder: string
+  docsUrl: string
+}
+
+const PROVIDERS: ProviderDef[] = [
+  {
+    name: 'openai',
+    label: 'OpenAI',
+    envVar: 'OPENAI_API_KEY',
+    placeholder: 'sk-...',
+    docsUrl: 'https://platform.openai.com/api-keys',
+  },
+  {
+    name: 'anthropic',
+    label: 'Anthropic',
+    envVar: 'ANTHROPIC_API_KEY',
+    placeholder: 'sk-ant-...',
+    docsUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  {
+    name: 'google',
+    label: 'Google (Gemini)',
+    envVar: 'GOOGLE_API_KEY',
+    placeholder: 'AIza...',
+    docsUrl: 'https://aistudio.google.com/apikey',
+  },
+  {
+    name: 'deepseek',
+    label: 'DeepSeek',
+    envVar: 'DEEPSEEK_API_KEY',
+    placeholder: 'sk-...',
+    docsUrl: 'https://platform.deepseek.com/api_keys',
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Skeleton
+// ---------------------------------------------------------------------------
 
 function SettingsSkeleton() {
   return (
@@ -42,6 +101,10 @@ function SettingsSkeleton() {
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function ConfigRow({ label, value }: { label: string; value: string }) {
   return (
@@ -100,144 +163,208 @@ function FeatureItem({ text }: { text: string }) {
   )
 }
 
-function LlmKeysCard({ companyId }: { companyId: string }) {
-  const queryClient = useQueryClient()
-  const { toast } = useToast()
-  const [openaiKey, setOpenaiKey] = useState('')
-  const [anthropicKey, setAnthropicKey] = useState('')
-  const [showOpenai, setShowOpenai] = useState(false)
-  const [showAnthropic, setShowAnthropic] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+// ---------------------------------------------------------------------------
+// ProviderCard — single provider key management
+// ---------------------------------------------------------------------------
 
-  const { data: llmKeys } = useQuery<LlmKeysData>({
-    queryKey: ['llm-keys', companyId],
-    queryFn: () => fetchLlmKeys(companyId),
-    staleTime: 30 * 1000,
-  })
+interface ProviderCardProps {
+  provider: ProviderDef
+  isConfigured: boolean
+  companyId: string
+  onSaved: () => void
+}
+
+function ProviderCard({ provider, isConfigured, companyId, onSaved }: ProviderCardProps) {
+  const { toast } = useToast()
+  const [keyValue, setKeyValue] = useState('')
+  const [showKey, setShowKey] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const handleSave = useCallback(async () => {
+    if (!keyValue.trim()) return
     setSaving(true)
-    setFeedback(null)
     try {
-      const payload: { openai?: string; anthropic?: string } = {}
-      if (openaiKey) payload.openai = openaiKey
-      if (anthropicKey) payload.anthropic = anthropicKey
-
-      if (!openaiKey && !anthropicKey) {
-        setFeedback({ type: 'error', message: 'Enter at least one API key to save.' })
-        setSaving(false)
-        return
+      // If a key already exists, delete it first (secrets API returns 409 on duplicate)
+      if (isConfigured) {
+        await deleteSecret(companyId, provider.envVar)
       }
-
-      await saveLlmKeys(companyId, payload)
-      await queryClient.invalidateQueries({ queryKey: ['llm-keys', companyId] })
-      setOpenaiKey('')
-      setAnthropicKey('')
-      setFeedback({ type: 'success', message: 'API keys saved. Agents will use them on next heartbeat.' })
-      toast('API keys saved', 'success')
+      await storeSecret(companyId, provider.envVar, keyValue.trim())
+      setKeyValue('')
+      setShowKey(false)
+      onSaved()
+      toast(`${provider.label} API key saved`, 'success')
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save keys.'
-      setFeedback({ type: 'error', message })
-      toast(`Failed to save keys: ${message}`, 'error')
+      const message = err instanceof Error ? err.message : 'Failed to save key'
+      toast(`Failed to save ${provider.label} key: ${message}`, 'error')
     } finally {
       setSaving(false)
     }
-  }, [companyId, openaiKey, anthropicKey, queryClient])
+  }, [companyId, keyValue, isConfigured, provider, onSaved, toast])
+
+  const handleDelete = useCallback(async () => {
+    setDeleting(true)
+    try {
+      await deleteSecret(companyId, provider.envVar)
+      onSaved()
+      toast(`${provider.label} API key removed`, 'info')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to remove key'
+      toast(`Failed to remove ${provider.label} key: ${message}`, 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }, [companyId, provider, onSaved, toast])
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Key className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">{provider.label}</span>
+        </div>
+        {isConfigured ? (
+          <Badge variant="success" className="gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            Configured
+          </Badge>
+        ) : (
+          <Badge variant="destructive" className="gap-1">
+            <XCircle className="h-3 w-3" />
+            Not Set
+          </Badge>
+        )}
+      </div>
+
+      {/* Env var name */}
+      <p className="text-xs text-muted-foreground font-mono">{provider.envVar}</p>
+
+      {/* Input row */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Input
+            type={showKey ? 'text' : 'password'}
+            placeholder={isConfigured ? 'Enter new key to replace...' : provider.placeholder}
+            value={keyValue}
+            onChange={(e) => setKeyValue(e.target.value)}
+            className="pr-10"
+            aria-label={`${provider.label} API key`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey(!showKey)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label={showKey ? 'Hide key' : 'Show key'}
+          >
+            {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || !keyValue.trim()}
+          >
+            {saving ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                Saving
+              </>
+            ) : (
+              'Save'
+            )}
+          </Button>
+          {isConfigured && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-destructive hover:text-destructive"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                'Remove'
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Docs link */}
+      <a
+        href={provider.docsUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Get an API key
+        <ExternalLink className="h-3 w-3" />
+      </a>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ProvidersCard — all providers
+// ---------------------------------------------------------------------------
+
+function ProvidersCard({ companyId }: { companyId: string }) {
+  const queryClient = useQueryClient()
+
+  const { data: secrets, isLoading } = useQuery<SecretListItem[]>({
+    queryKey: ['secrets', companyId],
+    queryFn: () => fetchSecrets(companyId),
+    staleTime: 15 * 1000,
+  })
+
+  const configuredNames = new Set(secrets?.map((s) => s.name) ?? [])
+
+  const handleSaved = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['secrets', companyId] })
+  }, [queryClient, companyId])
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
           <Key className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-base">LLM API Keys</CardTitle>
+          <CardTitle className="text-base">LLM Providers</CardTitle>
         </div>
         <p className="text-xs text-muted-foreground">
-          Configure API keys for LLM providers. Keys are stored locally and injected into agent processes.
+          Configure API keys for LLM providers. Keys are encrypted and injected into agent processes at runtime.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Current status */}
-        {llmKeys && (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-24 shrink-0 text-muted-foreground">OpenAI</span>
-              <span className="font-mono text-xs">
-                {llmKeys.openai ?? <span className="text-muted-foreground">Not configured</span>}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-24 shrink-0 text-muted-foreground">Anthropic</span>
-              <span className="font-mono text-xs">
-                {llmKeys.anthropic ?? <span className="text-muted-foreground">Not configured</span>}
-              </span>
-            </div>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-28 animate-pulse rounded-lg bg-muted" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {PROVIDERS.map((provider) => (
+              <ProviderCard
+                key={provider.name}
+                provider={provider}
+                isConfigured={configuredNames.has(provider.envVar)}
+                companyId={companyId}
+                onSaved={handleSaved}
+              />
+            ))}
           </div>
         )}
-
-        <div className="border-t pt-4 space-y-3">
-          <div className="space-y-1.5">
-            <label htmlFor="openai-key" className="text-sm font-medium">
-              OpenAI API Key
-            </label>
-            <div className="relative">
-              <Input
-                id="openai-key"
-                type={showOpenai ? 'text' : 'password'}
-                placeholder="sk-..."
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowOpenai(!showOpenai)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showOpenai ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="anthropic-key" className="text-sm font-medium">
-              Anthropic API Key
-            </label>
-            <div className="relative">
-              <Input
-                id="anthropic-key"
-                type={showAnthropic ? 'text' : 'password'}
-                placeholder="sk-ant-..."
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowAnthropic(!showAnthropic)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showAnthropic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-
-          <Button onClick={handleSave} disabled={saving} size="sm">
-            {saving ? 'Saving...' : 'Save Keys'}
-          </Button>
-
-          {feedback && (
-            <p
-              className={`text-xs ${feedback.type === 'success' ? 'text-green-500' : 'text-destructive'}`}
-            >
-              {feedback.message}
-            </p>
-          )}
-        </div>
       </CardContent>
     </Card>
   )
 }
+
+// ---------------------------------------------------------------------------
+// SettingsPage
+// ---------------------------------------------------------------------------
 
 export function SettingsPage() {
   const companyId = useCompanyId()
@@ -291,7 +418,7 @@ export function SettingsPage() {
               <ConfigRow label="Name" value={company.name} />
               <ConfigRow
                 label="Description"
-                value={company.description ?? '—'}
+                value={company.description ?? '\u2014'}
               />
               <ConfigRow label="Status" value={company.status} />
               <ConfigRow label="Created" value={formatDate(company.created_at)} />
@@ -305,8 +432,8 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* LLM API Keys */}
-      {companyId && <LlmKeysCard companyId={companyId} />}
+      {/* LLM Providers */}
+      {companyId && <ProvidersCard companyId={companyId} />}
 
       {/* Session */}
       <Card>
