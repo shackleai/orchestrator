@@ -23,7 +23,7 @@ import {
   type HeartbeatRun,
   type Agent,
 } from '@/lib/api'
-import { cn, formatCents, formatDuration, formatRelativeTime } from '@/lib/utils'
+import { formatCents, formatDuration, formatRelativeTime } from '@/lib/utils'
 
 const statusVariant: Record<
   string,
