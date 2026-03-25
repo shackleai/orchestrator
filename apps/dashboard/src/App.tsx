@@ -12,6 +12,7 @@ import { OrgChartPage } from './pages/org-chart'
 import { SettingsPage } from './pages/settings'
 import { TaskDetailPage } from './pages/task-detail'
 import { RunTranscriptPage } from './pages/run-transcript'
+import { PoliciesPage } from './pages/policies'
 import { DesignGuidePage } from './pages/design-guide'
 import { LoginPage } from './pages/login'
 import { getToken } from './lib/auth'
@@ -40,6 +41,7 @@ export function App() {
         <Route path="activity" element={<ActivityPage />} />
         <Route path="costs" element={<CostsPage />} />
         <Route path="org-chart" element={<OrgChartPage />} />
+        <Route path="policies" element={<PoliciesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="design-guide" element={<DesignGuidePage />} />
       </Route>

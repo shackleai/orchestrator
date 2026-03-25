@@ -519,3 +519,74 @@ export function fetchInboxCounts(
     `${BASE_URL}/companies/${companyId}/inbox/count?user_or_agent_id=${encodeURIComponent(userOrAgentId)}`,
   )
 }
+
+// --- Policies ---
+
+export interface Policy {
+  id: string
+  company_id: string
+  agent_id: string | null
+  name: string
+  tool_pattern: string
+  action: string
+  priority: number
+  max_calls_per_hour: number | null
+  created_at: string
+}
+
+export interface CreatePolicyPayload {
+  agent_id?: string | null
+  name: string
+  tool_pattern: string
+  action: string
+  priority: number
+  max_calls_per_hour?: number | null
+}
+
+export interface UpdatePolicyPayload {
+  agent_id?: string | null
+  name?: string
+  tool_pattern?: string
+  action?: string
+  priority?: number
+  max_calls_per_hour?: number | null
+}
+
+export function fetchPolicies(
+  companyId: string,
+  pagination?: { limit: number; offset: number },
+) {
+  const params = new URLSearchParams()
+  if (pagination) {
+    params.set('limit', String(pagination.limit))
+    params.set('offset', String(pagination.offset))
+  }
+  const qs = params.toString()
+  return fetchJson<Policy[]>(
+    `${BASE_URL}/companies/${companyId}/policies${qs ? `?${qs}` : ''}`,
+  )
+}
+
+export function createPolicy(companyId: string, payload: CreatePolicyPayload) {
+  return postJson<Policy>(
+    `${BASE_URL}/companies/${companyId}/policies`,
+    payload,
+  )
+}
+
+export function updatePolicy(
+  companyId: string,
+  policyId: string,
+  data: UpdatePolicyPayload,
+) {
+  return patchJson<Policy>(
+    `${BASE_URL}/companies/${companyId}/policies/${policyId}`,
+    data,
+  )
+}
+
+export function deletePolicy(companyId: string, policyId: string) {
+  return deleteJson<{ deleted: boolean; id: string }>(
+    `${BASE_URL}/companies/${companyId}/policies/${policyId}`,
+  )
+}
