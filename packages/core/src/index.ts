@@ -34,12 +34,16 @@ export {
   McpAdapter,
   OpenClawAdapter,
   CrewAIAdapter,
+  classifyAdapterError,
+  getAdapterFixInstructions,
 } from './adapters/index.js'
 export { getLastSessionState, saveSessionState } from './adapters/index.js'
 export type {
   AdapterContext,
   AdapterModule,
   AdapterResult,
+  AdapterErrorCategory,
+  ClassifiedError,
 } from './adapters/index.js'
 
 export { Scheduler } from './scheduler.js'

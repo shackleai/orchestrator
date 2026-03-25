@@ -35,7 +35,7 @@ import type { Observatory } from '../observatory.js'
 import { ContextBuilder } from '../context-builder.js'
 import type { AdapterRegistry } from '../adapters/index.js'
 import type { AdapterContext, AdapterModule, AdapterResult, GoalAncestry } from '../adapters/index.js'
-import { getLastSessionState, saveSessionState, compactSession } from '../adapters/index.js'
+import { getLastSessionState, saveSessionState, compactSession, classifyAdapterError } from '../adapters/index.js'
 import type { RunnerResult } from '../scheduler.js'
 import type { GovernanceEngine } from '../governance/index.js'
 import { SecretsManager } from '../secrets/index.js'
@@ -515,6 +515,27 @@ export class HeartbeatExecutor {
       }
 
       // ── Step 10: Update heartbeat_run ───────────────────────────────
+      // Classify adapter errors for actionable dashboard messages
+      let usageJson: string | null = adapterResult.usage
+        ? JSON.stringify(adapterResult.usage)
+        : null
+
+      if (finalStatus === HeartbeatRunStatus.Failed || finalStatus === HeartbeatRunStatus.Timeout) {
+        const classified = classifyAdapterError(
+          agent.adapter_type,
+          adapterResult.stderr || '',
+          adapterResult.exitCode,
+        )
+        // Store error metadata alongside usage (usage is typically null for failures)
+        const errorMetadata = {
+          ...(adapterResult.usage ?? {}),
+          error_category: classified.category,
+          fix_instructions: classified.fixInstructions,
+          error_summary: classified.summary,
+        }
+        usageJson = JSON.stringify(errorMetadata)
+      }
+
       await this.db.query(
         `UPDATE heartbeat_runs
          SET status = $1,
@@ -530,7 +551,7 @@ export class HeartbeatExecutor {
           adapterResult.exitCode,
           adapterResult.stdout?.slice(0, 4000) ?? null,
           adapterResult.stderr || null,
-          adapterResult.usage ? JSON.stringify(adapterResult.usage) : null,
+          usageJson,
           adapterResult.sessionState ?? null,
           runId,
         ],
