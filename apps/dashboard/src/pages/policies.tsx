@@ -335,12 +335,12 @@ function DeleteConfirmation({
 function PolicyActions({
   companyId,
   policy,
-  _agents,
+  agents: _agents,
   onEdit,
 }: {
   companyId: string
   policy: Policy
-  _agents: Agent[]
+  agents: Agent[]
   onEdit: (policy: Policy) => void
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
