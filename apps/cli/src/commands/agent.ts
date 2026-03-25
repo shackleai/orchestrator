@@ -6,6 +6,7 @@ import type { Command } from 'commander'
 import * as p from '@clack/prompts'
 import { AdapterType, AgentRole } from '@shackleai/shared'
 import type { Agent, AgentConfigRevision } from '@shackleai/shared'
+import { AdapterRegistry, getAdapterFixInstructions } from '@shackleai/core'
 import { apiClient, getCompanyId } from '../api-client.js'
 
 interface ApiResponse<T> {
@@ -84,14 +85,58 @@ async function createAgentInteractive(): Promise<void> {
     label: key,
   }))
 
-  const adapterType = await p.select({
-    message: 'Adapter type',
-    options: adapterOptions,
-  })
+  let adapterType: string | symbol
+  const registry = new AdapterRegistry()
 
-  if (p.isCancel(adapterType)) {
-    p.cancel('Cancelled.')
-    return
+  // Adapter selection loop — re-prompts if validation fails and user declines
+  while (true) {
+    adapterType = await p.select({
+      message: 'Adapter type',
+      options: adapterOptions,
+    })
+
+    if (p.isCancel(adapterType)) {
+      p.cancel('Cancelled.')
+      return
+    }
+
+    // Validate adapter runtime environment
+    const adapter = registry.get(adapterType as string)
+    if (adapter?.testEnvironment) {
+      const spin = p.spinner()
+      spin.start(`Checking ${adapter.label} environment...`)
+
+      try {
+        const envCheck = await adapter.testEnvironment()
+        if (envCheck.ok) {
+          spin.stop(`${adapter.label} is available`)
+        } else {
+          const fix = getAdapterFixInstructions(adapterType as string)
+          spin.stop(`${adapter.label} is not available`)
+          p.log.warning(`${envCheck.error}`)
+          p.log.info(`Fix: ${fix}`)
+
+          const continueAnyway = await p.confirm({
+            message: 'Continue anyway?',
+            initialValue: false,
+          })
+
+          if (p.isCancel(continueAnyway)) {
+            p.cancel('Cancelled.')
+            return
+          }
+
+          if (!continueAnyway) {
+            // Go back to adapter selection
+            continue
+          }
+        }
+      } catch {
+        spin.stop(`Could not verify ${adapter.label}`)
+      }
+    }
+
+    break
   }
 
   const companyId = await getCompanyId()

@@ -3,6 +3,8 @@
  */
 
 export type { AdapterContext, AdapterModule, AdapterResult, GoalAncestry } from './adapter.js'
+export { classifyAdapterError, getAdapterFixInstructions } from './adapter-errors.js'
+export type { AdapterErrorCategory, ClassifiedError } from './adapter-errors.js'
 export { ProcessAdapter } from './process.js'
 export { HttpAdapter } from './http.js'
 export { ClaudeAdapter } from './claude.js'
