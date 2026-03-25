@@ -6,6 +6,7 @@ import {
   ListTodo,
   LayoutGrid,
   Activity,
+  MessageSquare,
   DollarSign,
   Network,
   Shield,
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
   { to: '/org-chart', icon: Network, label: 'Org Chart' },
   { to: '/tasks', icon: ListTodo, label: 'Tasks', badgeKey: 'unread_issues' },
   { to: '/board', icon: LayoutGrid, label: 'Board' },
+  { to: '/sessions', icon: MessageSquare, label: 'Sessions' },
   { to: '/activity', icon: Activity, label: 'Activity', badgeKey: 'new_comments' },
   { to: '/costs', icon: DollarSign, label: 'Costs' },
   { to: '/policies', icon: Shield, label: 'Policies' },
@@ -57,6 +59,7 @@ function getPageLabel(pathname: string): string {
   const match = navItems.find((item) => item.to === pathname)
   if (match) return match.label
   if (pathname.startsWith('/agents/')) return 'Agent Detail'
+  if (pathname.startsWith('/sessions/')) return 'Session Detail'
   if (pathname.startsWith('/tasks/')) return 'Task Detail'
   return 'Page'
 }
