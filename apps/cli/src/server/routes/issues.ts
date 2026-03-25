@@ -49,7 +49,7 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     }
 
 
-    // Filter by label name — join through issue_labels + labels
+    // Filter by label name ï¿½ join through issue_labels + labels
     let joinClause = ''
     if (label) {
       joinClause = `INNER JOIN issue_labels il ON il.issue_id = i.id
@@ -361,6 +361,11 @@ export function issuesRouter(db: DatabaseProvider, scheduler?: Scheduler): Hono<
     if (result.rows.length === 0) {
       // Issue exists but is already claimed or not in a checkable state
       return c.json({ error: 'Issue already claimed or not available for checkout' }, 409)
+    }
+
+    // Trigger agent wake-up on checkout assignment
+    if (agentId && scheduler) {
+      void scheduler.triggerNow(agentId, TriggerType.TaskAssigned)
     }
 
     return c.json({ data: result.rows[0] })
