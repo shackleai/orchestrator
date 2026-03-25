@@ -63,22 +63,67 @@ const statusVariant: Record<string, 'success' | 'warning' | 'destructive' | 'sec
 const ROLES = ['worker', 'manager', 'ceo'] as const
 const ADAPTER_TYPES = ['process', 'http', 'claude', 'mcp', 'openclaw', 'crewai'] as const
 
-const ADAPTERS_WITH_ENTRYPOINT = new Set<string>(['process', 'http', 'claude', 'mcp', 'openclaw', 'crewai'])
+const CLAUDE_MODELS = [
+  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+  { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
+  { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+  { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+] as const
 
-function buildAdapterConfig(adapterType: string, entrypoint: string, timeout: number): Record<string, unknown> {
+interface AdapterFields {
+  command: string
+  args: string
+  url: string
+  authHeaders: string
+  model: string
+  agentName: string
+  serverCommand: string
+}
+
+function buildAdapterConfig(
+  adapterType: string,
+  fields: AdapterFields,
+  systemPrompt: string,
+  timeout: number,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = { timeout }
+  if (systemPrompt.trim()) {
+    base.system_prompt = systemPrompt.trim()
+  }
+
   switch (adapterType) {
     case 'process':
-      return { command: entrypoint, args: [], timeout }
-    case 'http':
-      return { url: entrypoint, timeout }
+      return {
+        ...base,
+        command: fields.command,
+        args: fields.args
+          ? fields.args.split(/\s+/).filter(Boolean)
+          : [],
+      }
+    case 'http': {
+      const config: Record<string, unknown> = { ...base, url: fields.url }
+      if (fields.authHeaders.trim()) {
+        try {
+          config.headers = JSON.parse(fields.authHeaders)
+        } catch {
+          config.headers = { Authorization: fields.authHeaders.trim() }
+        }
+      }
+      return config
+    }
     case 'claude':
-      return { prompt: entrypoint, model: 'claude-sonnet-4-20250514', timeout }
+      return {
+        ...base,
+        prompt: systemPrompt.trim() || '',
+        model: fields.model || 'claude-sonnet-4-20250514',
+      }
     case 'mcp':
-      return { url: entrypoint, toolName: 'run', timeout }
-    case 'crewai':
+      return { ...base, command: fields.serverCommand, toolName: 'run' }
     case 'openclaw':
+      return { ...base, agentName: fields.agentName }
+    case 'crewai':
     default:
-      return { entrypoint, timeout }
+      return { ...base, entrypoint: fields.command }
   }
 }
 
@@ -156,10 +201,25 @@ function CreateAgentForm({
   const [title, setTitle] = useState('')
   const [role, setRole] = useState<string>('worker')
   const [adapterType, setAdapterType] = useState<string>('process')
-  const [entrypoint, setEntrypoint] = useState('')
+  const [systemPrompt, setSystemPrompt] = useState('')
   const [timeout, setTimeout] = useState(120)
   const [budget, setBudget] = useState(500)
   const [schedule, setSchedule] = useState('')
+
+  // Adapter-specific fields
+  const [adapterFields, setAdapterFields] = useState<AdapterFields>({
+    command: '',
+    args: '',
+    url: '',
+    authHeaders: '',
+    model: 'claude-sonnet-4-20250514',
+    agentName: '',
+    serverCommand: '',
+  })
+
+  const updateField = (field: keyof AdapterFields, value: string) => {
+    setAdapterFields((prev) => ({ ...prev, [field]: value }))
+  }
 
   const mutation = useMutation({
     mutationFn: (payload: CreateAgentPayload) => createAgent(companyId, payload),
@@ -178,7 +238,7 @@ function CreateAgentForm({
     if (!name.trim()) return
 
     const adapterConfig = {
-      ...buildAdapterConfig(adapterType, entrypoint, timeout),
+      ...buildAdapterConfig(adapterType, adapterFields, systemPrompt, timeout),
       ...(schedule ? { cron: schedule } : {}),
     }
 
@@ -190,15 +250,6 @@ function CreateAgentForm({
       adapter_config: adapterConfig,
       budget_monthly_cents: Math.round(budget * 100),
     })
-  }
-
-  const entrypointPlaceholder: Record<string, string> = {
-    process: 'Path to .py file or command',
-    http: 'https://agent.example.com/run',
-    claude: 'System prompt for Claude agent',
-    mcp: 'https://mcp-server.example.com',
-    openclaw: 'Path to .py file or command',
-    crewai: 'Path to .py file or command',
   }
 
   return (
@@ -266,17 +317,138 @@ function CreateAgentForm({
             </div>
           </div>
 
-          {ADAPTERS_WITH_ENTRYPOINT.has(adapterType) && (
+          {/* System prompt — available for all adapters */}
+          <div className="space-y-1.5">
+            <label htmlFor="agent-system-prompt" className="text-sm font-medium">
+              System Prompt
+            </label>
+            <textarea
+              id="agent-system-prompt"
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="Instructions for the agent's behavior and role..."
+              rows={3}
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              Define the agent's persona, capabilities, and constraints.
+            </p>
+          </div>
+
+          {/* Adapter-specific configuration */}
+          {adapterType === 'process' && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="adapter-command" className="text-sm font-medium">
+                  Command
+                </label>
+                <Input
+                  id="adapter-command"
+                  value={adapterFields.command}
+                  onChange={(e) => updateField('command', e.target.value)}
+                  placeholder="python agent.py"
+                />
+                <p className="text-xs text-muted-foreground">
+                  The executable or script to run.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="adapter-args" className="text-sm font-medium">
+                  Arguments
+                </label>
+                <Input
+                  id="adapter-args"
+                  value={adapterFields.args}
+                  onChange={(e) => updateField('args', e.target.value)}
+                  placeholder="--verbose --mode=worker"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Space-separated command arguments.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {adapterType === 'http' && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="adapter-url" className="text-sm font-medium">
+                  URL
+                </label>
+                <Input
+                  id="adapter-url"
+                  value={adapterFields.url}
+                  onChange={(e) => updateField('url', e.target.value)}
+                  placeholder="https://agent.example.com/run"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="adapter-auth-headers" className="text-sm font-medium">
+                  Auth Headers
+                </label>
+                <Input
+                  id="adapter-auth-headers"
+                  value={adapterFields.authHeaders}
+                  onChange={(e) => updateField('authHeaders', e.target.value)}
+                  placeholder='Bearer token or {"Authorization": "..."}'
+                />
+                <p className="text-xs text-muted-foreground">
+                  A bearer token or JSON object of headers.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {adapterType === 'claude' && (
             <div className="space-y-1.5">
-              <label htmlFor="agent-entrypoint" className="text-sm font-medium">
-                Entrypoint
+              <label htmlFor="adapter-model" className="text-sm font-medium">
+                Model
+              </label>
+              <Select
+                id="adapter-model"
+                value={adapterFields.model}
+                onChange={(e) => updateField('model', e.target.value)}
+              >
+                {CLAUDE_MODELS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {adapterType === 'mcp' && (
+            <div className="space-y-1.5">
+              <label htmlFor="adapter-server-command" className="text-sm font-medium">
+                Server Command
               </label>
               <Input
-                id="agent-entrypoint"
-                value={entrypoint}
-                onChange={(e) => setEntrypoint(e.target.value)}
-                placeholder={entrypointPlaceholder[adapterType] ?? 'Path to .py file or command'}
+                id="adapter-server-command"
+                value={adapterFields.serverCommand}
+                onChange={(e) => updateField('serverCommand', e.target.value)}
+                placeholder="npx @shackleai/mcp-server"
               />
+              <p className="text-xs text-muted-foreground">
+                The command to start the MCP server.
+              </p>
+            </div>
+          )}
+
+          {adapterType === 'openclaw' && (
+            <div className="space-y-1.5">
+              <label htmlFor="adapter-agent-name" className="text-sm font-medium">
+                Agent Name
+              </label>
+              <Input
+                id="adapter-agent-name"
+                value={adapterFields.agentName}
+                onChange={(e) => updateField('agentName', e.target.value)}
+                placeholder="my-openclaw-agent"
+              />
+              <p className="text-xs text-muted-foreground">
+                The name of the OpenClaw agent to invoke.
+              </p>
             </div>
           )}
 
