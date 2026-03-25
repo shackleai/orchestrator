@@ -136,6 +136,7 @@ describe('Battle 13A: create agent -- all 11 adapter types', () => {
     AdapterType.Gemini,
     AdapterType.Kiro,
     AdapterType.OpenCode,
+    AdapterType.Llm,
   ] as const
 
   beforeAll(async () => {
@@ -150,9 +151,9 @@ describe('Battle 13A: create agent -- all 11 adapter types', () => {
   })
 
   it('covers exactly 11 adapter types (validates test completeness)', () => {
-    expect(ALL_ADAPTERS).toHaveLength(11)
+    expect(ALL_ADAPTERS).toHaveLength(12)
     const adapterValues = Object.values(AdapterType)
-    expect(adapterValues).toHaveLength(11)
+    expect(adapterValues).toHaveLength(12)
     adapterValues.forEach((v) => expect(ALL_ADAPTERS).toContain(v))
   })
 
